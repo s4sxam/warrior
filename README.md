@@ -3,7 +3,7 @@
 
 ```
 ```
-![WARRIOR 2026](https://readme-typing-svg.demolab.com?font=Black+Ops+One&size=50&duration=1&pause=99999&color=CC0000&center=true&width=600&height=80&lines=WARRIOR+2026)
+![WARRIOR 2026](https://readme-typing-svg.demolab.com?font=Black+Ops+One&size=72&duration=1&pause=99999&color=CC0000&center=true&width=800&height=120&lines=WARRIOR+2026)
 ```
 ```
 ### *Stop lying to yourself. Start counting.*
