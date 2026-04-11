@@ -1,162 +1,323 @@
-                        modifier = Modifier.size(22.dp))
-                },
-                label = {
-                    Text(item.label, fontSize = 10.sp,
-                        fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Normal)
-                },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor   = WarriorRed,
-                    selectedTextColor   = WarriorRed,
-                    unselectedIconColor = TextTertiary,
-                    unselectedTextColor = TextTertiary,
-                    indicatorColor      = Color(0xFF1A0000)
-                )
-            )
-        }
-    }
-}
+package com.tanay.warrior2026
 
-// ── Confetti ──────────────────────────────────────────────────
-@Composable
-fun ConfettiOverlay(onDismiss: () -> Unit) {
-    val particles = remember {
-        List(50) {
-            Triple(
-                (0..100).random() / 100f,
-                (0..100).random() / 100f,
-                listOf(VictoryGreen, WarriorRed, Color.White, Gold,
-                    Color(0xFF00BFFF), Color(0xFFFF69B4)).random()
-            )
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.tanay.warrior2026.data.ViewState
+import com.tanay.warrior2026.ui.screens.*
+import com.tanay.warrior2026.ui.theme.*
+import kotlin.math.abs
+
+class MainActivity : ComponentActivity() {
+
+    private val viewModel: WarriorViewModel by viewModels()
+
+    private val notifLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) {}
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-    }
-    val progress by animateFloatAsState(
-        targetValue  = 1f,
-        animationSpec = tween(2000),
-        label        = "confetti"
-    )
-    Box(
-        modifier = Modifier.fillMaxSize()
-            .clickable(interactionSource = remember { MutableInteractionSource() },
-                indication = null) { onDismiss() }
-    ) {
-        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
-            particles.forEach { (xF, yF, color) ->
-                drawCircle(
-                    color  = color.copy(alpha = (1f - progress).coerceIn(0f, 1f)),
-                    radius = 7f,
-                    center = androidx.compose.ui.geometry.Offset(
-                        xF * size.width,
-                        (yF + progress * 0.3f) * size.height
+        setContent {
+            Warrior2026Theme {
+                val state        by viewModel.state.collectAsStateWithLifecycle()
+                val showConfetti by viewModel.showConfetti.collectAsStateWithLifecycle()
+
+                if (!state.hasCompletedOnboarding) {
+                    OnboardingScreen(onFinish = { viewModel.completeOnboarding() })
+                } else {
+                    WarriorApp(
+                        state           = state,
+                        showConfetti    = showConfetti,
+                        onLogVictory    = { viewModel.logVictory() },
+                        onLogRelapse    = { url -> viewModel.logRelapse(url) },
+                        onUndoToday     = { viewModel.undoToday() },
+                        onClearConfetti = { viewModel.clearConfetti() },
+                        onExport        = { viewModel.exportJson() },
+                        onImport        = { json -> viewModel.importJson(json) },
+                        trollMessages   = viewModel.trollMessages,
                     )
-                )
-            }
-        }
-    }
-}
-
-// ── Relapse modal ─────────────────────────────────────────────
-@Composable
-fun RelapseModal(trollMessage: String, onConfess: (String) -> Boolean, onDismiss: () -> Unit) {
-    var urlInput by remember { mutableStateOf("") }
-    var urlError by remember { mutableStateOf(false) }
-
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.97f)),
-        contentAlignment = Alignment.Center) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(25.dp)
-                .clip(RoundedCornerShape(28.dp)).background(Color(0xFF0D0D0D))
-                .padding(32.dp, 28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(trollMessage, fontSize = 20.sp, fontWeight = FontWeight.Black,
-                color = Color.White, textAlign = TextAlign.Center, lineHeight = 28.sp)
-            Spacer(Modifier.height(8.dp))
-            Text("But today is a new chance to rebuild.",
-                fontSize = 13.sp, color = TextTertiary, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(16.dp))
-            Text("PASTE THE URL (OPTIONAL)", fontSize = 10.sp, color = TextTertiary,
-                fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
-            Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
-                value         = urlInput,
-                onValueChange = { urlInput = it; urlError = false },
-                placeholder   = { Text("https://example.com", color = Color(0xFF444444), fontSize = 13.sp) },
-                isError       = urlError,
-                singleLine    = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                colors        = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor      = Color.White,
-                    unfocusedTextColor    = Color.White,
-                    focusedContainerColor   = Color(0xFF111111),
-                    unfocusedContainerColor = Color(0xFF111111),
-                    focusedBorderColor    = WarriorRed,
-                    unfocusedBorderColor  = BorderColor,
-                ),
-                shape    = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth()
-            )
-            if (urlError) {
-                Spacer(Modifier.height(4.dp))
-                Text("Invalid URL format.", fontSize = 11.sp, color = WarriorRed, fontWeight = FontWeight.Bold)
-            }
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick  = { val ok = onConfess(urlInput.ifBlank { "unknown" }); if (!ok) urlError = true },
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape    = RoundedCornerShape(14.dp),
-                colors   = ButtonDefaults.buttonColors(containerColor = VictoryGreen)
-            ) {
-                Text("CONFESS & RESET", fontWeight = FontWeight.Black, fontSize = 14.sp, color = Color.Black)
-            }
-            Spacer(Modifier.height(8.dp))
-            TextButton(onClick = onDismiss) {
-                Text("CANCEL", fontSize = 11.sp, color = TextTertiary, fontWeight = FontWeight.ExtraBold)
-            }
-        }
-    }
-}
-
-// ── Panic modal ───────────────────────────────────────────────
-@Composable
-fun PanicModal(onDismiss: () -> Unit) {
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.97f)),
-        contentAlignment = Alignment.Center) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(25.dp)
-                .clip(RoundedCornerShape(28.dp)).background(Color(0xFF0D0D0D))
-                .padding(28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text("💀", fontSize = 48.sp)
-            Spacer(Modifier.height(10.dp))
-            Text("EMERGENCY PROTOCOL", fontSize = 15.sp, fontWeight = FontWeight.Black,
-                color = WarriorRed, letterSpacing = 2.sp)
-            Spacer(Modifier.height(20.dp))
-            listOf(
-                "DROP AND DO 50 PUSHUPS",
-                "COLD SHOWER — 3 MINUTES",
-                "CALL SOMEONE RIGHT NOW",
-                "GO OUTSIDE — WALK NOW",
-                "DRINK A FULL GLASS OF WATER",
-                "LOCK YOUR PHONE IN ANOTHER ROOM",
-            ).forEachIndexed { i, cmd ->
-                Box(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
-                    .clip(RoundedCornerShape(12.dp)).background(CardBlack)
-                    .padding(16.dp, 12.dp)) {
-                    Text("${i + 1}. $cmd", fontSize = 13.sp,
-                        fontWeight = FontWeight.ExtraBold, color = Color.White)
                 }
             }
-            Spacer(Modifier.height(16.dp))
-            Text("DON'T BE A SLAVE TO CHEAP PIXELS.", fontSize = 11.sp, color = TextTertiary,
-                fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(16.dp))
-            Button(onClick = onDismiss,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape    = CircleShape,
-                colors   = ButtonDefaults.buttonColors(containerColor = WarriorRed)) {
-                Text("I AM IN CONTROL", fontWeight = FontWeight.Black, fontSize = 14.sp, color = Color.White)
+        }
+    }
+}
+
+// ── Nav items ─────────────────────────────────────────────────
+data class NavItem(val view: ViewState, val label: String, val icon: ImageVector)
+
+val navItems = listOf(
+    NavItem(ViewState.DASHBOARD, "War Room",  Icons.Filled.Home),
+    NavItem(ViewState.ANALYSIS,  "Analysis",  Icons.Filled.BarChart),
+    NavItem(ViewState.ARCHIVE,   "Archives",  Icons.Filled.CalendarMonth),
+    NavItem(ViewState.ABOUT,     "Code",      Icons.Filled.Shield),
+)
+
+// ── Root App with Framer-Motion Style Dock ────────────────────
+@Composable
+fun WarriorApp(
+    state: com.tanay.warrior2026.data.WarriorState,
+    showConfetti: Boolean,
+    onLogVictory: () -> Unit,
+    onLogRelapse: (String) -> Boolean,
+    onUndoToday: () -> Unit,
+    onClearConfetti: () -> Unit,
+    onExport: () -> String,
+    onImport: (String) -> Boolean,
+    trollMessages: List<String>,
+) {
+    var currentView       by remember { mutableStateOf(ViewState.DASHBOARD) }
+    var showRelapseModal  by remember { mutableStateOf(false) }
+    var showPanicModal    by remember { mutableStateOf(false) }
+    var showAlreadySnack  by remember { mutableStateOf(false) }
+    var trollMessage      by remember { mutableStateOf("") }
+
+    // Dock State for Magnification
+    var fingerX by remember { mutableStateOf(-1f) }
+
+    BackHandler {
+        when {
+            showRelapseModal -> showRelapseModal = false
+            showPanicModal   -> showPanicModal   = false
+            currentView != ViewState.DASHBOARD -> currentView = ViewState.DASHBOARD
+        }
+    }
+
+    LaunchedEffect(showAlreadySnack) {
+        if (showAlreadySnack) { kotlinx.coroutines.delay(2500); showAlreadySnack = false }
+    }
+
+    Scaffold(
+        containerColor = BgBlack,
+        bottomBar = {
+            // MacOS / Framer-Motion Style Dock
+            WarriorMagnifiedDock(
+                items = navItems,
+                current = currentView,
+                fingerX = fingerX,
+                onFingerMove = { fingerX = it },
+                onSelect = { currentView = it }
+            )
+        }
+    ) { innerPadding ->
+        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Top bar
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("COMMANDER MODE", fontSize = 10.sp, color = TextTertiary, fontWeight = FontWeight.ExtraBold, letterSpacing = 3.sp)
+                        Text("WARRIOR 2026", fontSize = 22.sp, fontWeight = FontWeight.Black, color = WarriorRed)
+                    }
+                    if (state.isTodayLogged()) {
+                        IconButton(onClick = onUndoToday) {
+                            Icon(Icons.Filled.Undo, contentDescription = "Undo", tint = TextTertiary, modifier = Modifier.size(22.dp))
+                        }
+                    }
+                }
+
+                // Screen content
+                AnimatedContent(
+                    targetState = currentView,
+                    transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(200)) },
+                    label = "screen",
+                    modifier = Modifier.weight(1f)
+                ) { view ->
+                    when (view) {
+                        ViewState.DASHBOARD -> DashboardScreen(
+                            state = state,
+                            onPanicClick = { showPanicModal = true },
+                            onVictoryClick = {
+                                if (state.isTodayLogged() && state.history[com.tanay.warrior2026.data.todayKey()]?.status == "clean") showAlreadySnack = true
+                                else onLogVictory()
+                            },
+                            onRelapseClick = {
+                                trollMessage = trollMessages.random()
+                                showRelapseModal = true
+                            }
+                        )
+                        ViewState.ANALYSIS -> AnalysisScreen(state = state)
+                        ViewState.ARCHIVE  -> ArchiveScreen(state = state)
+                        ViewState.ABOUT    -> AboutScreen(onExport = onExport, onImport = onImport)
+                    }
+                }
             }
+
+            // UI Overlays (Confetti, Snackbar, Modals)
+            if (showConfetti) {
+                LaunchedEffect(Unit) { kotlinx.coroutines.delay(2000); onClearConfetti() }
+                ConfettiOverlay(onDismiss = onClearConfetti)
+            }
+            if (showRelapseModal) {
+                RelapseModal(trollMessage = trollMessage, onDismiss = { showRelapseModal = false }, onConfess = { url ->
+                    val ok = onLogRelapse(url)
+                    if (ok) showRelapseModal = false
+                    ok
+                })
+            }
+            if (showPanicModal) PanicModal(onDismiss = { showPanicModal = false })
+        }
+    }
+}
+
+// ── CUSTOM MAGNIFIED DOCK (Framer-Motion Port) ────────────────
+@Composable
+fun WarriorMagnifiedDock(
+    items: List<NavItem>,
+    current: ViewState,
+    fingerX: Float,
+    onFingerMove: (Float) -> Unit,
+    onSelect: (ViewState) -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 20.dp, start = 20.dp, end = 20.dp),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Row(
+            modifier = Modifier
+                .height(72.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(Color(0xFF0D0D0D).copy(alpha = 0.98f))
+                .border(1.dp, BorderColor, RoundedCornerShape(24.dp))
+                .padding(horizontal = 12.dp)
+                .pointerInput(Unit) {
+                    // This tracks the finger sliding across the dock
+                    androidx.compose.foundation.gestures.detectDragGestures(
+                        onDragEnd = { onFingerMove(-1f) },
+                        onDragCancel = { onFingerMove(-1f) },
+                        onDrag = { change, _ ->
+                            onFingerMove(change.positionInWindow().x)
+                        }
+                    )
+                },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items.forEach { item ->
+                MagnifiedDockItem(
+                    item = item,
+                    isSelected = current == item.view,
+                    fingerX = fingerX,
+                    onClick = { onSelect(item.view) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun MagnifiedDockItem(
+    item: NavItem,
+    isSelected: Boolean,
+    fingerX: Float,
+    onClick: () -> Unit
+) {
+    var itemCenterX by remember { mutableStateOf(0f) }
+    
+    // Magnification Math: Grows as finger gets closer
+    // distance of 250px is where magnification starts
+    val distance = if (fingerX == -1f) Float.MAX_VALUE else abs(fingerX - itemCenterX)
+    val magnification = 0.4f // How much bigger it gets (40%)
+    val range = 250f        // Distance threshold in pixels
+    
+    val targetScale = if (distance < range) {
+        1f + (magnification * (1f - (distance / range)))
+    } else {
+        1f
+    }
+
+    val scale by animateFloatAsState(
+        targetValue = targetScale,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioLowBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "scale"
+    )
+
+    Column(
+        modifier = Modifier
+            .onGloballyPositioned { coords ->
+                itemCenterX = coords.positionInWindow().x + (coords.size.width / 2)
+            }
+            .scale(scale)
+            .width(52.dp)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            ),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .clip(CircleShape)
+                .background(if (isSelected) Color(0xFF1A0000) else Color.Transparent),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = item.icon,
+                contentDescription = item.label,
+                tint = if (isSelected) WarriorRed else TextTertiary,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+        if (scale > 1.1f || isSelected) {
+            Text(
+                text = item.label,
+                fontSize = 8.sp,
+                color = if (isSelected) WarriorRed else TextTertiary,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
         }
     }
 }
