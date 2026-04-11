@@ -31,7 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -111,7 +111,7 @@ fun WarriorApp(
     var showAlreadySnack  by remember { mutableStateOf(false) }
     var trollMessage      by remember { mutableStateOf("") }
 
-    // Dock State for Magnification
+    // Dock State for Magnification (Local X coordinate)
     var fingerX by remember { mutableStateOf(-1f) }
 
     BackHandler {
@@ -140,6 +140,7 @@ fun WarriorApp(
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             Column(modifier = Modifier.fillMaxSize()) {
+                // Top bar
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -156,6 +157,7 @@ fun WarriorApp(
                     }
                 }
 
+                // Screen content
                 AnimatedContent(
                     targetState = currentView,
                     transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(200)) },
@@ -182,6 +184,7 @@ fun WarriorApp(
                 }
             }
 
+            // UI Overlays
             if (showConfetti) {
                 LaunchedEffect(Unit) { kotlinx.coroutines.delay(2000); onClearConfetti() }
                 ConfettiOverlay(onDismiss = onClearConfetti)
@@ -220,13 +223,12 @@ fun WarriorMagnifiedDock(
                 .border(1.dp, BorderColor, RoundedCornerShape(24.dp))
                 .padding(horizontal = 12.dp)
                 .pointerInput(Unit) {
-                    // FIX: Call extension function directly and use localToWindow for coordinate mapping
                     detectDragGestures(
                         onDragEnd = { onFingerMove(-1f) },
                         onDragCancel = { onFingerMove(-1f) },
                         onDrag = { change, _ ->
-                            val windowX = layoutCoordinates.localToWindow(change.position).x
-                            onFingerMove(windowX)
+                            // Use local position relative to the Row
+                            onFingerMove(change.position.x)
                         }
                     )
                 },
@@ -254,6 +256,7 @@ fun MagnifiedDockItem(
 ) {
     var itemCenterX by remember { mutableStateOf(0f) }
     
+    // Calculate distance based on local Row coordinates
     val distance = if (fingerX == -1f) Float.MAX_VALUE else abs(fingerX - itemCenterX)
     val magnification = 0.4f 
     val range = 250f        
@@ -276,7 +279,8 @@ fun MagnifiedDockItem(
     Column(
         modifier = Modifier
             .onGloballyPositioned { coords ->
-                itemCenterX = coords.positionInWindow().x + (coords.size.width / 2)
+                // Center relative to parent (the Row)
+                itemCenterX = coords.positionInParent().x + (coords.size.width / 2)
             }
             .scale(scale)
             .width(52.dp)
