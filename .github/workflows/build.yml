@@ -1,0 +1,59 @@
+name: Build & Publish Warrior APK
+
+# This workflow runs when you push to main, create a tag (v1.0), or click "Run workflow" manually.
+on:
+  push:
+    branches: [ "main" ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+# Needed to allow the Action to create a Release page on GitHub automatically
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Android Gradle Plugin 8+ requires Java 17 to build the project
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # Sets up Gradle caching to make future builds much faster
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      # Grants Linux permission to run the Gradle wrapper
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      # Builds the debug APK
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug
+
+      # Uploads the APK so you can download it from the "Actions" tab
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Warrior2026-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+      # If you pushed a tag (like 'v1.0'), this automatically creates a GitHub Release!
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Warrior 2026 ${{ github.ref_name }}
+          files: app/build/outputs/apk/debug/app-debug.apk
+          generate_release_notes: true
