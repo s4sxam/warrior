@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Permissions required by the app's features -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -19,23 +18,21 @@
 
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <receiver
-            android:name=".notifications.BootReceiver"
-            android:exported="true">
+        <receiver android:name=".notifications.BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
 
-        <!-- Notification Receivers -->
         <receiver android:name=".notifications.MorningReceiver" android:exported="false" />
         <receiver android:name=".notifications.AfternoonReceiver" android:exported="false" />
         <receiver android:name=".notifications.EveningReceiver" android:exported="false" />
@@ -43,4 +40,5 @@
         <receiver android:name=".notifications.MilestoneReceiver" android:exported="false" />
 
     </application>
+
 </manifest>
