@@ -1,35 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Notifications -->
+    <!-- Permissions required by the app's features -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:name=".WarriorApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
+        android:label="Warrior 2026"
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Warrior2026">
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
 
         <activity
             android:name=".MainActivity"
-            android:exported="true"
-            android:windowSoftInputMode="adjustResize">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- Boot receiver — reschedules alarms after reboot -->
         <receiver
             android:name=".notifications.BootReceiver"
             android:exported="true">
@@ -39,13 +35,12 @@
             </intent-filter>
         </receiver>
 
-        <!-- Scheduled alarm receivers -->
-        <receiver android:name=".notifications.MorningReceiver"   android:exported="false" />
+        <!-- Notification Receivers -->
+        <receiver android:name=".notifications.MorningReceiver" android:exported="false" />
         <receiver android:name=".notifications.AfternoonReceiver" android:exported="false" />
-        <receiver android:name=".notifications.EveningReceiver"   android:exported="false" />
+        <receiver android:name=".notifications.EveningReceiver" android:exported="false" />
         <receiver android:name=".notifications.RandomMotivationReceiver" android:exported="false" />
         <receiver android:name=".notifications.MilestoneReceiver" android:exported="false" />
 
     </application>
-
 </manifest>
