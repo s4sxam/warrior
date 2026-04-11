@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -90,7 +91,7 @@ fun DashboardScreen(
             shape = CircleShape,
             colors = ButtonDefaults.buttonColors(containerColor = WarriorRed)
         ) {
-            Icon(Icons.Filled.Skull, contentDescription = null, tint = Color.White)
+            Icon(Icons.Filled.Warning, contentDescription = null, tint = Color.White)
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = "PANIC BUTTON",
