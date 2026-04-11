@@ -10,20 +10,24 @@ import kotlin.random.Random
 
 object WarriorScheduler {
 
-    // ──────────────────────────────────────────────
-    //  PUBLIC ENTRY POINTS
-    // ──────────────────────────────────────────────
-
     fun scheduleAll(context: Context) {
-        scheduleMorning(context)
-        scheduleAfternoon(context)
-        scheduleEvening(context)
-        scheduleRandomMotivation(context)
+        if (!isScheduled(context, 101, MorningReceiver::class.java)) scheduleMorning(context)
+        if (!isScheduled(context, 102, AfternoonReceiver::class.java)) scheduleAfternoon(context)
+        if (!isScheduled(context, 103, EveningReceiver::class.java)) scheduleEvening(context)
+        if (!isScheduled(context, 200, RandomMotivationReceiver::class.java)) scheduleRandomMotivation(context)
     }
 
-    // ──────────────────────────────────────────────
-    //  MORNING  — 6:00 AM  ± 0–45 min random offset
-    // ──────────────────────────────────────────────
+    private fun <T : Any> isScheduled(context: Context, requestCode: Int, receiverClass: Class<T>): Boolean {
+        val intent = Intent(context, receiverClass)
+        val pending = PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+        )
+        return pending != null
+    }
+
     fun scheduleMorning(context: Context) {
         val cal = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 6)
@@ -31,17 +35,9 @@ object WarriorScheduler {
             set(Calendar.SECOND, 0)
             if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
         }
-        schedule(
-            context = context,
-            triggerAtMillis = cal.timeInMillis,
-            requestCode = 101,
-            receiverClass = MorningReceiver::class.java
-        )
+        schedule(context, cal.timeInMillis, 101, MorningReceiver::class.java)
     }
 
-    // ──────────────────────────────────────────────
-    //  AFTERNOON  — 1:00 PM  ± 0–90 min random
-    // ──────────────────────────────────────────────
     fun scheduleAfternoon(context: Context) {
         val cal = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 13)
@@ -49,17 +45,9 @@ object WarriorScheduler {
             set(Calendar.SECOND, 0)
             if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
         }
-        schedule(
-            context = context,
-            triggerAtMillis = cal.timeInMillis,
-            requestCode = 102,
-            receiverClass = AfternoonReceiver::class.java
-        )
+        schedule(context, cal.timeInMillis, 102, AfternoonReceiver::class.java)
     }
 
-    // ──────────────────────────────────────────────
-    //  EVENING  — 8:00 PM  ± 0–60 min random
-    // ──────────────────────────────────────────────
     fun scheduleEvening(context: Context) {
         val cal = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 20)
@@ -67,29 +55,16 @@ object WarriorScheduler {
             set(Calendar.SECOND, 0)
             if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
         }
-        schedule(
-            context = context,
-            triggerAtMillis = cal.timeInMillis,
-            requestCode = 103,
-            receiverClass = EveningReceiver::class.java
-        )
+        schedule(context, cal.timeInMillis, 103, EveningReceiver::class.java)
     }
 
-    // ──────────────────────────────────────────────
-    //  RANDOM MOTIVATION — 1 to 3 per day
-    //  Fires at a completely random time in the
-    //  waking window (9 AM – 11 PM) and reschedules
-    //  itself with a new random delay (3–8 hours).
-    // ──────────────────────────────────────────────
     fun scheduleRandomMotivation(context: Context) {
-        // Pick a delay between 3 and 8 hours from now (in millis)
         val delayHours = Random.nextInt(3, 9)
         val delayMinutes = Random.nextInt(0, 60)
         val delayMs = ((delayHours * 60 + delayMinutes) * 60 * 1000).toLong()
 
         val triggerAt = System.currentTimeMillis() + delayMs
 
-        // Clamp to waking hours: 9 AM – 11 PM
         val cal = Calendar.getInstance().apply { timeInMillis = triggerAt }
         val hour = cal.get(Calendar.HOUR_OF_DAY)
         when {
@@ -101,18 +76,9 @@ object WarriorScheduler {
             }
         }
 
-        schedule(
-            context = context,
-            triggerAtMillis = cal.timeInMillis,
-            requestCode = 200,
-            receiverClass = RandomMotivationReceiver::class.java
-        )
+        schedule(context, cal.timeInMillis, 200, RandomMotivationReceiver::class.java)
     }
 
-    // ──────────────────────────────────────────────
-    //  MILESTONE — called from ViewModel when
-    //  streak hits a checkpoint
-    // ──────────────────────────────────────────────
     fun fireMilestoneNow(context: Context, streak: Int) {
         val intent = Intent(context, MilestoneReceiver::class.java).apply {
             putExtra("streak", streak)
@@ -120,9 +86,6 @@ object WarriorScheduler {
         context.sendBroadcast(intent)
     }
 
-    // ──────────────────────────────────────────────
-    //  INTERNAL HELPER
-    // ──────────────────────────────────────────────
     private fun <T : Any> schedule(
         context: Context,
         triggerAtMillis: Long,
@@ -143,7 +106,6 @@ object WarriorScheduler {
                 if (am.canScheduleExactAlarms()) {
                     am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pending)
                 } else {
-                    // Fallback to inexact if exact permission not granted
                     am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pending)
                 }
             } else {
