@@ -7,6 +7,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.*
@@ -51,7 +52,10 @@ class MainActivity : ComponentActivity() {
     ) {}
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // This ensures the app fills the screen properly
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED
@@ -92,7 +96,7 @@ val navItems = listOf(
     NavItem(ViewState.ABOUT,     "Code",      Icons.Filled.Shield),
 )
 
-// ── Root App with Framer-Motion Style Dock ────────────────────
+// ── Root App ──────────────────────────────────────────────────
 @Composable
 fun WarriorApp(
     state: com.tanay.warrior2026.data.WarriorState,
@@ -110,8 +114,6 @@ fun WarriorApp(
     var showPanicModal    by remember { mutableStateOf(false) }
     var showAlreadySnack  by remember { mutableStateOf(false) }
     var trollMessage      by remember { mutableStateOf("") }
-
-    // Dock State for Magnification (Local X coordinate)
     var fingerX by remember { mutableStateOf(-1f) }
 
     BackHandler {
@@ -120,10 +122,6 @@ fun WarriorApp(
             showPanicModal   -> showPanicModal   = false
             currentView != ViewState.DASHBOARD -> currentView = ViewState.DASHBOARD
         }
-    }
-
-    LaunchedEffect(showAlreadySnack) {
-        if (showAlreadySnack) { kotlinx.coroutines.delay(2500); showAlreadySnack = false }
     }
 
     Scaffold(
@@ -138,9 +136,9 @@ fun WarriorApp(
             )
         }
     ) { innerPadding ->
+        // innerPadding here handles the top status bar and bottom nav height
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Top bar
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -157,7 +155,6 @@ fun WarriorApp(
                     }
                 }
 
-                // Screen content
                 AnimatedContent(
                     targetState = currentView,
                     transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(200)) },
@@ -168,10 +165,7 @@ fun WarriorApp(
                         ViewState.DASHBOARD -> DashboardScreen(
                             state = state,
                             onPanicClick = { showPanicModal = true },
-                            onVictoryClick = {
-                                if (state.isTodayLogged() && state.history[com.tanay.warrior2026.data.todayKey()]?.status == "clean") showAlreadySnack = true
-                                else onLogVictory()
-                            },
+                            onVictoryClick = { onLogVictory() },
                             onRelapseClick = {
                                 trollMessage = trollMessages.random()
                                 showRelapseModal = true
@@ -184,7 +178,6 @@ fun WarriorApp(
                 }
             }
 
-            // UI Overlays
             if (showConfetti) {
                 LaunchedEffect(Unit) { kotlinx.coroutines.delay(2000); onClearConfetti() }
                 ConfettiOverlay(onDismiss = onClearConfetti)
@@ -212,7 +205,9 @@ fun WarriorMagnifiedDock(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 20.dp, start = 20.dp, end = 20.dp),
+            // FIX: Added navigationBarsPadding to stay above system buttons
+            .navigationBarsPadding() 
+            .padding(bottom = 12.dp, start = 20.dp, end = 20.dp),
         contentAlignment = Alignment.BottomCenter
     ) {
         Row(
@@ -227,7 +222,6 @@ fun WarriorMagnifiedDock(
                         onDragEnd = { onFingerMove(-1f) },
                         onDragCancel = { onFingerMove(-1f) },
                         onDrag = { change, _ ->
-                            // Use local position relative to the Row
                             onFingerMove(change.position.x)
                         }
                     )
@@ -255,31 +249,23 @@ fun MagnifiedDockItem(
     onClick: () -> Unit
 ) {
     var itemCenterX by remember { mutableStateOf(0f) }
-    
-    // Calculate distance based on local Row coordinates
     val distance = if (fingerX == -1f) Float.MAX_VALUE else abs(fingerX - itemCenterX)
-    val magnification = 0.4f 
-    val range = 250f        
     
-    val targetScale = if (distance < range) {
-        1f + (magnification * (1f - (distance / range)))
+    val targetScale = if (distance < 250f) {
+        1f + (0.4f * (1f - (distance / 250f)))
     } else {
         1f
     }
 
     val scale by animateFloatAsState(
         targetValue = targetScale,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioLowBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
+        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow),
         label = "scale"
     )
 
     Column(
         modifier = Modifier
             .onGloballyPositioned { coords ->
-                // Center relative to parent (the Row)
                 itemCenterX = coords.positionInParent().x + (coords.size.width / 2)
             }
             .scale(scale)
