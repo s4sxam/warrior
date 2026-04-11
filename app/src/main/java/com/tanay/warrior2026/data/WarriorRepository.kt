@@ -22,11 +22,15 @@ class WarriorRepository(private val context: Context) {
 
     val warriorStateFlow: Flow<WarriorState> = context.dataStore.data.map { prefs ->
         val history: Map<String, DayData> = runCatching {
-            Json.decodeFromString(prefs[Keys.HISTORY] ?: "{}")
+            val jsonStr = prefs[Keys.HISTORY] ?: "{}"
+            Json.decodeFromString<Map<String, DayData>>(jsonStr)
         }.getOrDefault(emptyMap())
+        
         val triggers: Map<String, Int> = runCatching {
-            Json.decodeFromString(prefs[Keys.TRIGGERS] ?: "{}")
+            val jsonStr = prefs[Keys.TRIGGERS] ?: "{}"
+            Json.decodeFromString<Map<String, Int>>(jsonStr)
         }.getOrDefault(emptyMap())
+        
         val onboarded = prefs[Keys.ONBOARDING] ?: false
         WarriorState(history, triggers, onboarded)
     }
@@ -39,10 +43,8 @@ class WarriorRepository(private val context: Context) {
         }
     }
 
-    /** Returns a JSON string for export/backup */
     fun exportJson(state: WarriorState): String = Json.encodeToString(state.history)
 
-    /** Imports from a JSON backup string â€” merges with existing history */
     fun importJson(existing: WarriorState, json: String): WarriorState? = runCatching {
         val imported: Map<String, DayData> = Json.decodeFromString(json)
         existing.copy(history = existing.history + imported)
