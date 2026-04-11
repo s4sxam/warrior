@@ -1,7 +1,6 @@
 package com.tanay.warrior2026
 
 import android.Manifest
-import androidx.compose.foundation.gestures.detectDragGestures
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -15,11 +14,11 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -34,8 +33,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -132,7 +129,6 @@ fun WarriorApp(
     Scaffold(
         containerColor = BgBlack,
         bottomBar = {
-            // MacOS / Framer-Motion Style Dock
             WarriorMagnifiedDock(
                 items = navItems,
                 current = currentView,
@@ -144,7 +140,6 @@ fun WarriorApp(
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Top bar
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -161,7 +156,6 @@ fun WarriorApp(
                     }
                 }
 
-                // Screen content
                 AnimatedContent(
                     targetState = currentView,
                     transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(200)) },
@@ -188,7 +182,6 @@ fun WarriorApp(
                 }
             }
 
-            // UI Overlays (Confetti, Snackbar, Modals)
             if (showConfetti) {
                 LaunchedEffect(Unit) { kotlinx.coroutines.delay(2000); onClearConfetti() }
                 ConfettiOverlay(onDismiss = onClearConfetti)
@@ -205,7 +198,6 @@ fun WarriorApp(
     }
 }
 
-// ── CUSTOM MAGNIFIED DOCK (Framer-Motion Port) ────────────────
 @Composable
 fun WarriorMagnifiedDock(
     items: List<NavItem>,
@@ -228,12 +220,13 @@ fun WarriorMagnifiedDock(
                 .border(1.dp, BorderColor, RoundedCornerShape(24.dp))
                 .padding(horizontal = 12.dp)
                 .pointerInput(Unit) {
-                    // This tracks the finger sliding across the dock
-                    androidx.compose.foundation.gestures.detectDragGestures(
+                    // FIX: Call extension function directly and use localToWindow for coordinate mapping
+                    detectDragGestures(
                         onDragEnd = { onFingerMove(-1f) },
                         onDragCancel = { onFingerMove(-1f) },
                         onDrag = { change, _ ->
-                            onFingerMove(change.positionInWindow().x)
+                            val windowX = layoutCoordinates.localToWindow(change.position).x
+                            onFingerMove(windowX)
                         }
                     )
                 },
@@ -261,11 +254,9 @@ fun MagnifiedDockItem(
 ) {
     var itemCenterX by remember { mutableStateOf(0f) }
     
-    // Magnification Math: Grows as finger gets closer
-    // distance of 250px is where magnification starts
     val distance = if (fingerX == -1f) Float.MAX_VALUE else abs(fingerX - itemCenterX)
-    val magnification = 0.4f // How much bigger it gets (40%)
-    val range = 250f        // Distance threshold in pixels
+    val magnification = 0.4f 
+    val range = 250f        
     
     val targetScale = if (distance < range) {
         1f + (magnification * (1f - (distance / range)))
