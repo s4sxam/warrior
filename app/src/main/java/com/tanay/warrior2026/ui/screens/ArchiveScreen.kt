@@ -1,10 +1,11 @@
 package com.tanay.warrior2026.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,146 +17,187 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tanay.warrior2026.data.WarriorState
 import com.tanay.warrior2026.ui.theme.*
-import java.text.SimpleDateFormat
-import java.util.*
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
+import java.util.Locale
 
-private val MONTHS = listOf(
-    "JANUARY","FEBRUARY","MARCH","APRIL","MAY","JUNE",
-    "JULY","AUGUST","SEPTEMBER","OCTOBER","NOVEMBER","DECEMBER"
+private data class ArchiveMonth(
+    val label: String,
+    val year: Int,
+    val monthValue: Int, // 1–12
+    val victories: Int,
+    val defeats: Int,
+    val dayStatuses: List<String?> // null=no data, "clean", "failed"
 )
+
+private fun buildArchiveMonths(state: WarriorState): List<ArchiveMonth> {
+    val fmt = DateTimeFormatter.ISO_LOCAL_DATE
+    val now = LocalDate.now()
+    return (0..11).reversed().mapNotNull { offset ->
+        val target = now.minusMonths(offset.toLong())
+        val daysInMonth = target.month.length(target.isLeapYear)
+        var v = 0; var d = 0
+        val statuses = (1..daysInMonth).map { day ->
+            val key = target.withDayOfMonth(day).format(fmt)
+            when (val s = state.history[key]?.status) {
+                "clean"  -> { v++; s }
+                "failed" -> { d++; s }
+                else     -> null
+            }
+        }
+        if (v + d == 0) null
+        else ArchiveMonth(
+            label      = target.month.getDisplayName(TextStyle.FULL, Locale.US).uppercase(),
+            year       = target.year,
+            monthValue = target.monthValue,
+            victories  = v,
+            defeats    = d,
+            dayStatuses = statuses
+        )
+    }
+}
 
 @Composable
 fun ArchiveScreen(state: WarriorState) {
-    val sdf = remember { SimpleDateFormat("EEE MMM dd yyyy", Locale.US) }
-    val currentMonth = Calendar.getInstance().get(Calendar.MONTH)
-    val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+    val months = remember(state.history) { buildArchiveMonths(state) }
 
-    var totalVictories = 0
-    var totalDefeats = 0
+    if (months.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize().background(BgBlack), contentAlignment = Alignment.Center) {
+            Text("NO DATA YET.\nSTART LOGGING.", fontSize = 16.sp,
+                fontWeight = FontWeight.ExtraBold, color = TextTertiary,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        }
+        return
+    }
+
+    val totalV = months.sumOf { it.victories }
+    val totalD = months.sumOf { it.defeats }
+    val totalC = if (totalV + totalD > 0) ((totalV.toFloat() / (totalV + totalD)) * 100).toInt() else 0
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(BgBlack),
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Text("WARRIOR ARCHIVES", fontSize = 22.sp, fontWeight = FontWeight.Black,
+                color = WarriorRed, letterSpacing = 2.sp)
+        }
+
+        items(items = months, key = { "${it.year}-${it.monthValue}" }) { m ->
+            ArchiveMonthCard(m)
+        }
+
+        // Grand total
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(WarriorRed)
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("ALL-TIME", fontSize = 9.sp, color = Color.White.copy(alpha = 0.6f),
+                        fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+                    Spacer(Modifier.height(6.dp))
+                    Text("$totalV CLEAN  ·  $totalD FAILED", fontSize = 18.sp,
+                        fontWeight = FontWeight.Black, color = Color.White)
+                    Spacer(Modifier.height(4.dp))
+                    Text("$totalC% CONSISTENCY", fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.8f))
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun ArchiveMonthCard(m: ArchiveMonth) {
+    val consistency = if (m.victories + m.defeats > 0)
+        ((m.victories.toFloat() / (m.victories + m.defeats)) * 100).toInt() else 0
 
     Column(
         modifier = Modifier
-            .fillMaxSize()
-            .background(BgBlack)
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(CardBlack)
+            .border(1.dp, BorderColor, RoundedCornerShape(20.dp))
+            .padding(18.dp)
     ) {
-        Text(
-            "WARRIOR ARCHIVES",
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Black,
-            color = WarriorRed,
-            letterSpacing = 2.sp
-        )
-        Spacer(Modifier.height(20.dp))
-
-        for (m in 0..currentMonth) {
-            var mV = 0; var mD = 0
-            val daysInMonth = Calendar.getInstance().apply { set(currentYear, m + 1, 0) }.get(Calendar.DAY_OF_MONTH)
-
-            val dayDataList = (1..daysInMonth).map { day ->
-                val cal = Calendar.getInstance().apply { set(currentYear, m, day) }
-                val key = sdf.format(cal.time)
-                state.history[key]
-            }
-
-            val hasData = dayDataList.any { it != null }
-            if (!hasData) continue
-
-            dayDataList.forEach { d ->
-                if (d != null) {
-                    if (d.status == "clean") mV++ else mD++
-                }
-            }
-            totalVictories += mV; totalDefeats += mD
-
-            // Month Card
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 22.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFF080808))
-                    .padding(20.dp)
-            ) {
-                Text(
-                    "${MONTHS[m]} $currentYear",
-                    fontSize = 11.sp,
-                    color = WarriorRed,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 1.sp
-                )
-                Spacer(Modifier.height(12.dp))
-
-                val rows = dayDataList.chunked(7)
-                rows.forEach { row ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        row.forEachIndexed { idx, d ->
-                            val dayNum = rows.indexOf(row) * 7 + idx + 1
-                            val bg = when (d?.status) {
-                                "clean"  -> VictoryGreen
-                                "failed" -> WarriorRed
-                                else     -> CardBlack
-                            }
-                            val tc = when (d?.status) {
-                                "clean"  -> Color.Black
-                                "failed" -> Color.White
-                                else     -> TextDimmer
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .aspectRatio(1f)
-                                    .clip(RoundedCornerShape(7.dp))
-                                    .background(bg),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("$dayNum", fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = tc)
-                                    if (d?.site != null) {
-                                        Text("●", fontSize = 4.sp, color = Color.White.copy(alpha = 0.6f))
-                                    }
-                                }
-                            }
-                        }
-                        repeat(7 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
-                    }
-                    Spacer(Modifier.height(5.dp))
-                }
-
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "V: $mV  |  D: $mD  |  ${if (mV + mD > 0) ((mV.toFloat() / (mV + mD)) * 100).toInt() else 0}% CLEAN",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = TextDim
-                )
-            }
-        }
-
-        // Grand Total
-        val consistency = if (totalVictories + totalDefeats > 0)
-            ((totalVictories.toFloat() / (totalVictories + totalDefeats)) * 100).toInt() else 0
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(25.dp))
-                .background(WarriorRed)
-                .padding(25.dp),
-            contentAlignment = Alignment.Center
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("GRAND TOTAL SUM", fontSize = 9.sp, color = Color.White.copy(alpha = 0.5f), fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
-                Spacer(Modifier.height(8.dp))
-                Text("$totalVictories JAY  |  $totalDefeats PARAJAY", fontSize = 22.sp, fontWeight = FontWeight.Black, color = Color.White)
-                Spacer(Modifier.height(4.dp))
-                Text("CONSISTENCY: $consistency%", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color.White.copy(alpha = 0.8f))
+            Text("${m.label} ${m.year}", fontSize = 12.sp, color = WarriorRed,
+                fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+            Text("$consistency% CLEAN", fontSize = 10.sp,
+                color = if (consistency >= 70) VictoryGreen else TextTertiary,
+                fontWeight = FontWeight.ExtraBold)
+        }
+        Spacer(Modifier.height(12.dp))
+
+        // DOW headers
+        val dowHeaders = listOf("S","M","T","W","T","F","S")
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            dowHeaders.forEach { d ->
+                Text(d, modifier = Modifier.weight(1f), fontSize = 7.sp,
+                    fontWeight = FontWeight.ExtraBold, color = TextTertiary,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
         }
-        Spacer(Modifier.height(40.dp))
+        Spacer(Modifier.height(4.dp))
+
+        // Weekday offset for this month
+        val firstDay = LocalDate.of(m.year, m.monthValue, 1)
+        val startOffset = firstDay.dayOfWeek.value % 7
+        val cells: List<Int?> = List(startOffset) { null } + m.dayStatuses.indices.map { it + 1 }
+        val rows = cells.chunked(7)
+
+        rows.forEach { row ->
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                val padded = row + List(7 - row.size) { null }
+                padded.forEach { day ->
+                    if (day == null) {
+                        Spacer(modifier = Modifier.weight(1f).aspectRatio(1f))
+                    } else {
+                        val status = m.dayStatuses.getOrNull(day - 1)
+                        val bg = when (status) {
+                            "clean"  -> VictoryGreen
+                            "failed" -> WarriorRed
+                            else     -> Color(0xFF1A1A1A)
+                        }
+                        val tc = when (status) {
+                            "clean"  -> Color.Black
+                            "failed" -> Color.White
+                            else     -> Color(0xFF444444)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(bg),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("$day", fontSize = 8.sp, fontWeight = FontWeight.ExtraBold, color = tc)
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text("✅ ${m.victories} CLEAN", fontSize = 10.sp, color = VictoryGreen,
+                fontWeight = FontWeight.ExtraBold)
+            Text("❌ ${m.defeats} FAILED", fontSize = 10.sp, color = WarriorRed,
+                fontWeight = FontWeight.ExtraBold)
+        }
     }
 }
