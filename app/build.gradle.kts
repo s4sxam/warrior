@@ -42,7 +42,8 @@ android {
 }
 
 dependencies {
-    implementation(libs.androidx.core-ktx)
+    // NOTE: Hyphens (-) from libs.versions.toml must be dots (.) here
+    implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
