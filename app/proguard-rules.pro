@@ -1,0 +1,5 @@
+-keep class com.tanay.warrior2026.data.** { *; }
+-keep class com.tanay.warrior2026.notifications.** { *; }
+-keepattributes *Annotation*
+-keepattributes Signature
+-dontwarn com.google.gson.**
