@@ -156,7 +156,7 @@ Issues, ideas, and PRs are open. If you fix a bug or build something from the ro
 
 <div align="center">
 
-**Built by [Tanay Guha](https://github.com/s4sxam) · West Bengal, India**
+**Built by [Tanay (s3sxam) ](https://github.com/s4sxam) · India**
 
 *One clean day at a time.*
 
