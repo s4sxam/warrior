@@ -1,3 +1,4 @@
+package com.tanay.warrior2026
 
 // [UPDATE] v2.0.0: Added Commander Profile flow, Leaderboard tab, bot state wiring
 // [UPDATE] v2.1.0: Added in-app update checker dialog
@@ -33,7 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
@@ -108,10 +108,10 @@ class MainActivity : ComponentActivity() {
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Text(
-                                        text       = "⚔️ NEW VERSION AVAILABLE",
-                                        fontSize   = 11.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color      = WarriorRed,
+                                        text          = "⚔️ NEW VERSION AVAILABLE",
+                                        fontSize      = 11.sp,
+                                        fontWeight    = FontWeight.ExtraBold,
+                                        color         = WarriorRed,
                                         letterSpacing = 2.sp
                                     )
                                     Spacer(modifier = Modifier.height(10.dp))
@@ -123,10 +123,10 @@ class MainActivity : ComponentActivity() {
                                     )
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Text(
-                                        text      = "Your streak and all data will NOT be lost.\nJust install over the existing app.",
-                                        fontSize  = 13.sp,
-                                        color     = TextTertiary,
-                                        textAlign = TextAlign.Center,
+                                        text       = "Your streak and all data will NOT be lost.\nJust install over the existing app.",
+                                        fontSize   = 13.sp,
+                                        color      = TextTertiary,
+                                        textAlign  = TextAlign.Center,
                                         lineHeight = 18.sp
                                     )
                                     Spacer(modifier = Modifier.height(22.dp))
@@ -144,8 +144,8 @@ class MainActivity : ComponentActivity() {
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Text(
-                                            text       = "DOWNLOAD UPDATE",
-                                            fontWeight = FontWeight.ExtraBold,
+                                            text          = "DOWNLOAD UPDATE",
+                                            fontWeight    = FontWeight.ExtraBold,
                                             letterSpacing = 1.sp
                                         )
                                     }
@@ -177,17 +177,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
-// ── Nav items ──────────────────────────────────────────────────────────────────
-data class NavItem(val view: ViewState, val label: String, val icon: ImageVector)
-
-val navItems = listOf(
-    NavItem(ViewState.DASHBOARD,   "War Room",  Icons.Filled.Home),
-    NavItem(ViewState.LEADERBOARD, "Arena",     Icons.Filled.EmojiEvents),
-    NavItem(ViewState.ANALYSIS,    "Analysis",  Icons.Filled.BarChart),
-    NavItem(ViewState.ARCHIVE,     "Archives",  Icons.Filled.CalendarMonth),
-    NavItem(ViewState.ABOUT,       "Code",      Icons.Filled.Shield),
-)
 
 // ── Root App ───────────────────────────────────────────────────────────────────
 @Composable
@@ -253,10 +242,10 @@ fun WarriorApp(
                 }
 
                 AnimatedContent(
-                    targetState  = currentView,
+                    targetState    = currentView,
                     transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(200)) },
-                    label        = "screen",
-                    modifier     = Modifier.weight(1f)
+                    label          = "screen",
+                    modifier       = Modifier.weight(1f)
                 ) { view ->
                     when (view) {
                         ViewState.DASHBOARD -> DashboardScreen(
