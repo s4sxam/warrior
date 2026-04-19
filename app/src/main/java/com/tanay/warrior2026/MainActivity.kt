@@ -1,9 +1,11 @@
-package com.tanay.warrior2026
 
 // [UPDATE] v2.0.0: Added Commander Profile flow, Leaderboard tab, bot state wiring
+// [UPDATE] v2.1.0: Added in-app update checker dialog
 
+import android.content.Intent
 import android.Manifest
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -35,9 +37,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tanay.warrior2026.data.ViewState
@@ -62,12 +67,17 @@ class MainActivity : ComponentActivity() {
                 != PackageManager.PERMISSION_GRANTED
             ) notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+
+        // v2.1.0: Check for update once on launch
+        viewModel.checkForUpdate(BuildConfig.VERSION_NAME)
+
         setContent {
             Warrior2026Theme {
-                val state             by viewModel.state.collectAsStateWithLifecycle()
-                val showConfetti      by viewModel.showConfetti.collectAsStateWithLifecycle()
-                val bots              by viewModel.bots.collectAsStateWithLifecycle()
-                val isGeneratingBots  by viewModel.isGeneratingBots.collectAsStateWithLifecycle()
+                val state            by viewModel.state.collectAsStateWithLifecycle()
+                val showConfetti     by viewModel.showConfetti.collectAsStateWithLifecycle()
+                val bots             by viewModel.bots.collectAsStateWithLifecycle()
+                val isGeneratingBots by viewModel.isGeneratingBots.collectAsStateWithLifecycle()
+                val updateState      by viewModel.updateState.collectAsStateWithLifecycle()
 
                 when {
                     // Step 1: Original onboarding pages
@@ -85,6 +95,68 @@ class MainActivity : ComponentActivity() {
                     }
                     // Step 3: Main app
                     else -> {
+                        val context = LocalContext.current
+
+                        // v2.1.0: Update dialog
+                        if (updateState.hasUpdate && !updateState.dismissed) {
+                            Dialog(onDismissRequest = { viewModel.dismissUpdate() }) {
+                                Column(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(Color(0xFF1A0000))
+                                        .padding(24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text       = "⚔️ NEW VERSION AVAILABLE",
+                                        fontSize   = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color      = WarriorRed,
+                                        letterSpacing = 2.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(
+                                        text       = "v${updateState.latestVersion} is ready",
+                                        fontSize   = 20.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color      = Color.White
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text      = "Your streak and all data will NOT be lost.\nJust install over the existing app.",
+                                        fontSize  = 13.sp,
+                                        color     = TextTertiary,
+                                        textAlign = TextAlign.Center,
+                                        lineHeight = 18.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(22.dp))
+                                    Button(
+                                        onClick = {
+                                            val intent = Intent(
+                                                Intent.ACTION_VIEW,
+                                                Uri.parse(updateState.downloadUrl)
+                                            )
+                                            context.startActivity(intent)
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = WarriorRed
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            text       = "DOWNLOAD UPDATE",
+                                            fontWeight = FontWeight.ExtraBold,
+                                            letterSpacing = 1.sp
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    TextButton(onClick = { viewModel.dismissUpdate() }) {
+                                        Text("Later", color = TextTertiary)
+                                    }
+                                }
+                            }
+                        }
+
                         WarriorApp(
                             state           = state,
                             showConfetti    = showConfetti,
@@ -110,11 +182,11 @@ class MainActivity : ComponentActivity() {
 data class NavItem(val view: ViewState, val label: String, val icon: ImageVector)
 
 val navItems = listOf(
-    NavItem(ViewState.DASHBOARD,   "War Room",    Icons.Filled.Home),
-    NavItem(ViewState.LEADERBOARD, "Arena",       Icons.Filled.EmojiEvents),
-    NavItem(ViewState.ANALYSIS,    "Analysis",    Icons.Filled.BarChart),
-    NavItem(ViewState.ARCHIVE,     "Archives",    Icons.Filled.CalendarMonth),
-    NavItem(ViewState.ABOUT,       "Code",        Icons.Filled.Shield),
+    NavItem(ViewState.DASHBOARD,   "War Room",  Icons.Filled.Home),
+    NavItem(ViewState.LEADERBOARD, "Arena",     Icons.Filled.EmojiEvents),
+    NavItem(ViewState.ANALYSIS,    "Analysis",  Icons.Filled.BarChart),
+    NavItem(ViewState.ARCHIVE,     "Archives",  Icons.Filled.CalendarMonth),
+    NavItem(ViewState.ABOUT,       "Code",      Icons.Filled.Shield),
 )
 
 // ── Root App ───────────────────────────────────────────────────────────────────
@@ -133,11 +205,11 @@ fun WarriorApp(
     globalBoard: List<com.tanay.warrior2026.data.BotSimulator.LeaderboardEntry>,
     getBotProfile: (Int) -> com.tanay.warrior2026.data.BotProfile?
 ) {
-    var currentView       by remember { mutableStateOf(ViewState.DASHBOARD) }
-    var showRelapseModal  by remember { mutableStateOf(false) }
-    var showPanicModal    by remember { mutableStateOf(false) }
-    var trollMessage      by remember { mutableStateOf("") }
-    var fingerX           by remember { mutableStateOf(-1f) }
+    var currentView      by remember { mutableStateOf(ViewState.DASHBOARD) }
+    var showRelapseModal by remember { mutableStateOf(false) }
+    var showPanicModal   by remember { mutableStateOf(false) }
+    var trollMessage     by remember { mutableStateOf("") }
+    var fingerX          by remember { mutableStateOf(-1f) }
 
     BackHandler {
         when {
@@ -151,11 +223,11 @@ fun WarriorApp(
         containerColor = BgBlack,
         bottomBar = {
             WarriorMagnifiedDock(
-                items         = navItems,
-                current       = currentView,
-                fingerX       = fingerX,
-                onFingerMove  = { fingerX = it },
-                onSelect      = { currentView = it }
+                items        = navItems,
+                current      = currentView,
+                fingerX      = fingerX,
+                onFingerMove = { fingerX = it },
+                onSelect     = { currentView = it }
             )
         }
     ) { innerPadding ->
@@ -214,13 +286,15 @@ fun WarriorApp(
                 ConfettiOverlay(onDismiss = onClearConfetti)
             }
             if (showRelapseModal) {
-                RelapseModal(trollMessage = trollMessage,
-                    onDismiss = { showRelapseModal = false },
-                    onConfess = { url ->
+                RelapseModal(
+                    trollMessage = trollMessage,
+                    onDismiss    = { showRelapseModal = false },
+                    onConfess    = { url ->
                         val ok = onLogRelapse(url)
                         if (ok) showRelapseModal = false
                         ok
-                    })
+                    }
+                )
             }
             if (showPanicModal) PanicModal(onDismiss = { showPanicModal = false })
         }
@@ -287,9 +361,9 @@ fun MagnifiedDockItem(
     } else 1f
 
     val scale by animateFloatAsState(
-        targetValue  = targetScale,
+        targetValue   = targetScale,
         animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow),
-        label        = "scale"
+        label         = "scale"
     )
 
     Column(
@@ -320,7 +394,7 @@ fun MagnifiedDockItem(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = item.icon,
+                imageVector        = item.icon,
                 contentDescription = item.label,
                 tint = when {
                     !isSelected -> TextTertiary
