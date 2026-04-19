@@ -2,6 +2,7 @@ package com.tanay.warrior2026
 
 // [UPDATE] v2.0.0: Added Commander Profile flow, Leaderboard tab, bot state wiring
 // [UPDATE] v2.1.0: Added in-app update checker dialog
+// [UPDATE] v2.2.0: Update dialog now uses DownloadManager — no browser open
 
 import android.content.Intent
 import android.Manifest
@@ -68,7 +69,7 @@ class MainActivity : ComponentActivity() {
             ) notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
 
-        // v2.1.0: Check for update once on launch
+        // v2.2.0: Check for update once on launch
         viewModel.checkForUpdate(BuildConfig.VERSION_NAME)
 
         setContent {
@@ -97,9 +98,14 @@ class MainActivity : ComponentActivity() {
                     else -> {
                         val context = LocalContext.current
 
-                        // v2.1.0: Update dialog
+                        // v2.2.0: Update dialog — phases: IDLE → DOWNLOADING → READY / FAILED
                         if (updateState.hasUpdate && !updateState.dismissed) {
-                            Dialog(onDismissRequest = { viewModel.dismissUpdate() }) {
+                            Dialog(onDismissRequest = {
+                                // Only allow dismiss when not actively downloading
+                                if (updateState.phase != WarriorViewModel.DownloadPhase.DOWNLOADING) {
+                                    viewModel.dismissUpdate()
+                                }
+                            }) {
                                 Column(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(20.dp))
@@ -130,28 +136,110 @@ class MainActivity : ComponentActivity() {
                                         lineHeight = 18.sp
                                     )
                                     Spacer(modifier = Modifier.height(22.dp))
-                                    Button(
-                                        onClick = {
-                                            val intent = Intent(
-                                                Intent.ACTION_VIEW,
-                                                Uri.parse(updateState.downloadUrl)
+
+                                    when (updateState.phase) {
+
+                                        // ── Not yet started ──────────────────
+                                        WarriorViewModel.DownloadPhase.IDLE -> {
+                                            Button(
+                                                onClick = { viewModel.downloadUpdate() },
+                                                colors  = ButtonDefaults.buttonColors(
+                                                    containerColor = WarriorRed
+                                                ),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text(
+                                                    text          = "DOWNLOAD UPDATE",
+                                                    fontWeight    = FontWeight.ExtraBold,
+                                                    letterSpacing = 1.sp
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            TextButton(onClick = { viewModel.dismissUpdate() }) {
+                                                Text("Later", color = TextTertiary)
+                                            }
+                                        }
+
+                                        // ── Downloading — show progress bar ──
+                                        WarriorViewModel.DownloadPhase.DOWNLOADING -> {
+                                            val fraction = updateState.progressFraction
+                                            if (fraction < 0f) {
+                                                // Total size unknown — indeterminate
+                                                LinearProgressIndicator(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    color    = WarriorRed,
+                                                    trackColor = Color(0xFF3A0000)
+                                                )
+                                            } else {
+                                                LinearProgressIndicator(
+                                                    progress = { fraction },
+                                                    modifier  = Modifier.fillMaxWidth(),
+                                                    color     = WarriorRed,
+                                                    trackColor = Color(0xFF3A0000)
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            val mbDone  = updateState.progressBytes / 1_048_576f
+                                            val mbTotal = updateState.totalBytes  / 1_048_576f
+                                            val label = if (updateState.totalBytes > 0)
+                                                "%.1f / %.1f MB".format(mbDone, mbTotal)
+                                            else
+                                                "Downloading..."
+                                            Text(
+                                                text     = label,
+                                                fontSize = 12.sp,
+                                                color    = TextTertiary
                                             )
-                                            context.startActivity(intent)
-                                        },
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = WarriorRed
-                                        ),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text(
-                                            text          = "DOWNLOAD UPDATE",
-                                            fontWeight    = FontWeight.ExtraBold,
-                                            letterSpacing = 1.sp
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    TextButton(onClick = { viewModel.dismissUpdate() }) {
-                                        Text("Later", color = TextTertiary)
+                                        }
+
+                                        // ── Done — prompt to install ─────────
+                                        WarriorViewModel.DownloadPhase.READY -> {
+                                            Button(
+                                                onClick = { viewModel.installApk(context) },
+                                                colors  = ButtonDefaults.buttonColors(
+                                                    containerColor = WarriorRed
+                                                ),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text(
+                                                    text          = "INSTALL NOW",
+                                                    fontWeight    = FontWeight.ExtraBold,
+                                                    letterSpacing = 1.sp
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            TextButton(onClick = { viewModel.dismissUpdate() }) {
+                                                Text("Later", color = TextTertiary)
+                                            }
+                                        }
+
+                                        // ── Download failed ──────────────────
+                                        WarriorViewModel.DownloadPhase.FAILED -> {
+                                            Text(
+                                                text      = "Download failed. Check your connection.",
+                                                fontSize  = 12.sp,
+                                                color     = WarriorRed,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            Button(
+                                                onClick = { viewModel.retryDownload() },
+                                                colors  = ButtonDefaults.buttonColors(
+                                                    containerColor = WarriorRed
+                                                ),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text(
+                                                    text          = "RETRY",
+                                                    fontWeight    = FontWeight.ExtraBold,
+                                                    letterSpacing = 1.sp
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            TextButton(onClick = { viewModel.dismissUpdate() }) {
+                                                Text("Later", color = TextTertiary)
+                                            }
+                                        }
                                     }
                                 }
                             }
