@@ -7,7 +7,6 @@ import java.net.URL
 
 object UpdateChecker {
 
-    // Must match your GitHub username/repo exactly
     private const val GITHUB_API =
         "https://api.github.com/repos/s4sxam/warrior/releases/latest"
 
@@ -22,10 +21,8 @@ object UpdateChecker {
             val json = URL(GITHUB_API).readText()
             val obj = JSONObject(json)
 
-            // tag_name is like "v2.1.0" — strip the "v" prefix
             val latestTag = obj.getString("tag_name").removePrefix("v")
 
-            // Find the APK asset download URL
             val assets = obj.getJSONArray("assets")
             var apkUrl = ""
             for (i in 0 until assets.length()) {
@@ -43,7 +40,6 @@ object UpdateChecker {
         }
     }
 
-    // Compares semantic versions: "2.1.0" > "2.0.0" → true
     private fun isNewer(latest: String, current: String): Boolean {
         val l = latest.split(".").map { it.toIntOrNull() ?: 0 }
         val c = current.split(".").map { it.toIntOrNull() ?: 0 }
@@ -55,3 +51,4 @@ object UpdateChecker {
         }
         return false
     }
+}
