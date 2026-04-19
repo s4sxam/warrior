@@ -2,12 +2,19 @@ package com.tanay.warrior2026
 
 // [UPDATE] v2.0.0: Added profile setup, bot simulation, leaderboard state
 // [UPDATE] v2.1.0: Added update checker
+// [UPDATE] v2.2.0: In-app DownloadManager download + install trigger
 
 import android.app.Application
+import android.app.DownloadManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tanay.warrior2026.data.BotProfile
@@ -19,12 +26,15 @@ import com.tanay.warrior2026.data.WarriorState
 import com.tanay.warrior2026.data.todayKey
 import com.tanay.warrior2026.notifications.WarriorScheduler
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 class WarriorViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -36,23 +46,44 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
     private val _showConfetti = MutableStateFlow(false)
     val showConfetti: StateFlow<Boolean> = _showConfetti.asStateFlow()
 
-    // v2.0.0: Live bot list in memory (not stored in StateFlow to avoid recompose on every tick)
     private val _bots = MutableStateFlow<List<BotProfile>>(emptyList())
     val bots: StateFlow<List<BotProfile>> = _bots.asStateFlow()
 
-    // v2.0.0: Loading flag for the fake "server sync" screen
     private val _isGeneratingBots = MutableStateFlow(false)
     val isGeneratingBots: StateFlow<Boolean> = _isGeneratingBots.asStateFlow()
 
-    // v2.1.0: Update checker state
+    // ── v2.2.0: Extended UpdateState ─────────────────────────────────────────
+    //
+    //  DownloadPhase describes where the user is in the update flow:
+    //
+    //  IDLE          → update available, not yet tapped Download
+    //  DOWNLOADING   → DownloadManager is running, show progress bar
+    //  READY         → download complete, show "Install Now" button
+    //  FAILED        → download failed, show retry option
+    //
+    enum class DownloadPhase { IDLE, DOWNLOADING, READY, FAILED }
+
     data class UpdateState(
         val hasUpdate: Boolean = false,
         val latestVersion: String = "",
         val downloadUrl: String = "",
-        val dismissed: Boolean = false
-    )
+        val dismissed: Boolean = false,
+        // download tracking
+        val phase: DownloadPhase = DownloadPhase.IDLE,
+        val downloadId: Long = -1L,
+        val progressBytes: Long = 0L,
+        val totalBytes: Long = 0L,
+        val localUri: String? = null   // set when READY
+    ) {
+        /** 0f–1f progress fraction; -1f means indeterminate */
+        val progressFraction: Float
+            get() = if (totalBytes > 0) progressBytes.toFloat() / totalBytes else -1f
+    }
+
     private val _updateState = MutableStateFlow(UpdateState())
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
+
+    private var pollJob: Job? = null   // cancellable polling coroutine
 
     val trollMessages = listOf(
         "EWW. Shame of humanity.",
@@ -66,7 +97,6 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             repo.warriorStateFlow.collectLatest { s ->
                 _state.value = s
-                // If profile is complete and bots are stored, advance simulation
                 if (s.hasCompletedProfile && s.botsJson.isNotBlank()) {
                     advanceBotsIfNeeded(s.botsJson)
                 }
@@ -74,15 +104,14 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    // ── Onboarding / Profile / Bots (unchanged) ───────────────────────────────
+
     fun completeOnboarding() {
         val new = _state.value.copy(hasCompletedOnboarding = true)
         _state.value = new
         viewModelScope.launch { repo.saveState(new) }
     }
 
-    // ── v2.0.0: Profile Setup ─────────────────────────────────────────────────
-
-    /** Called when user finishes the Commander Profile screen. Generates 1,050 bots. */
     fun completeProfile(name: String, dob: String, region: String) {
         _isGeneratingBots.value = true
         viewModelScope.launch(Dispatchers.Default) {
@@ -103,17 +132,12 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    // ── v2.0.0: Bot Simulation ────────────────────────────────────────────────
-
     private fun advanceBotsIfNeeded(botsJson: String) {
         viewModelScope.launch(Dispatchers.Default) {
             val loaded   = BotSimulator.loadBots(botsJson)
             val advanced = BotSimulator.advanceSimulation(loaded)
             val newJson  = BotSimulator.saveBots(advanced)
-            withContext(Dispatchers.Main) {
-                _bots.value = advanced
-            }
-            // Only persist if something actually changed (saves DataStore writes)
+            withContext(Dispatchers.Main) { _bots.value = advanced }
             if (newJson != botsJson) {
                 val new = _state.value.copy(botsJson = newJson)
                 _state.value = new
@@ -122,7 +146,7 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    // ── Leaderboard helpers ───────────────────────────────────────────────────
+    // ── Leaderboard ───────────────────────────────────────────────────────────
 
     fun regionalLeaderboard(): List<BotSimulator.LeaderboardEntry> {
         val s = _state.value
@@ -146,7 +170,7 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
 
     fun getBotProfile(botId: Int): BotProfile? = _bots.value.find { it.id == botId }
 
-    // ── Existing actions ──────────────────────────────────────────────────────
+    // ── Existing actions (unchanged) ──────────────────────────────────────────
 
     fun logVictory() {
         val today = todayKey()
@@ -197,7 +221,7 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         return true
     }
 
-    // ── v2.1.0: Update Checker ────────────────────────────────────────────────
+    // ── v2.2.0: Update flow ───────────────────────────────────────────────────
 
     fun checkForUpdate(currentVersion: String) {
         viewModelScope.launch {
@@ -212,8 +236,99 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /**
+     * Called when the user taps "Download Update" in the dialog.
+     * Enqueues the APK via DownloadManager and starts polling.
+     */
+    fun downloadUpdate() {
+        val s = _updateState.value
+        if (s.downloadUrl.isBlank()) return
+
+        val ctx = getApplication<Application>()
+        val downloadId = UpdateChecker.downloadApk(ctx, s.downloadUrl, s.latestVersion)
+
+        _updateState.value = s.copy(
+            phase      = DownloadPhase.DOWNLOADING,
+            downloadId = downloadId
+        )
+
+        startPolling(downloadId)
+    }
+
+    /**
+     * Polls DownloadManager every 500 ms until the download finishes or fails.
+     */
+    private fun startPolling(downloadId: Long) {
+        pollJob?.cancel()
+        pollJob = viewModelScope.launch(Dispatchers.IO) {
+            while (true) {
+                val progress = UpdateChecker.queryProgress(getApplication(), downloadId)
+
+                withContext(Dispatchers.Main) {
+                    when (progress.status) {
+                        DownloadManager.STATUS_SUCCESSFUL -> {
+                            _updateState.value = _updateState.value.copy(
+                                phase        = DownloadPhase.READY,
+                                progressBytes = progress.bytesDownloaded,
+                                totalBytes    = progress.bytesTotal,
+                                localUri      = progress.localUri
+                            )
+                        }
+                        DownloadManager.STATUS_FAILED -> {
+                            _updateState.value = _updateState.value.copy(
+                                phase = DownloadPhase.FAILED
+                            )
+                        }
+                        else -> {
+                            // STATUS_RUNNING or STATUS_PENDING — update progress
+                            _updateState.value = _updateState.value.copy(
+                                progressBytes = progress.bytesDownloaded,
+                                totalBytes    = progress.bytesTotal
+                            )
+                        }
+                    }
+                }
+
+                // Stop polling once terminal state is reached
+                if (progress.status == DownloadManager.STATUS_SUCCESSFUL ||
+                    progress.status == DownloadManager.STATUS_FAILED) {
+                    break
+                }
+
+                delay(500)
+            }
+        }
+    }
+
+    /**
+     * Called from MainActivity after READY state — fires the system package installer.
+     * Uses FileProvider so it works on Android 7+ (API 24+).
+     */
+    fun installApk(context: Context) {
+        val localUri = _updateState.value.localUri ?: return
+        val file = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            "warrior-${_updateState.value.latestVersion}.apk"
+        )
+        val contentUri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.provider",
+            file
+        )
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(contentUri, "application/vnd.android.package-archive")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+        }
+        context.startActivity(intent)
+    }
+
     fun dismissUpdate() {
+        pollJob?.cancel()
         _updateState.value = _updateState.value.copy(dismissed = true)
+    }
+
+    fun retryDownload() {
+        _updateState.value = _updateState.value.copy(phase = DownloadPhase.IDLE)
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
