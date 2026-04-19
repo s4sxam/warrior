@@ -22,9 +22,9 @@ android {
     signingConfigs {
         create("release") {
             storeFile = file(System.getenv("KEY_STORE_PATH") ?: "warrior-release.jks")
-            storePassword = System.getenv("KEY_STORE_PASSWORD") ?: ""
-            keyAlias = System.getenv("KEY_ALIAS") ?: ""
-            keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+            storePassword = System.getenv("KEY_STORE_PASSWORD") ?: "AASSDDFF1@"
+            keyAlias = System.getenv("KEY_ALIAS") ?: "warrior"
+            keyPassword = System.getenv("KEY_PASSWORD") ?: "AASSDDFF1@"
         }
     }
 
