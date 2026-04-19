@@ -1,7 +1,8 @@
 package com.tanay.warrior2026
 
 // [UPDATE] v2.0.0: Added profile setup, bot simulation, leaderboard state
-import com.tanay.warrior2026.UpdateChecker
+// [UPDATE] v2.1.0: Added update checker
+
 import android.app.Application
 import android.os.Build
 import android.os.VibrationEffect
@@ -43,6 +44,16 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
     private val _isGeneratingBots = MutableStateFlow(false)
     val isGeneratingBots: StateFlow<Boolean> = _isGeneratingBots.asStateFlow()
 
+    // v2.1.0: Update checker state
+    data class UpdateState(
+        val hasUpdate: Boolean = false,
+        val latestVersion: String = "",
+        val downloadUrl: String = "",
+        val dismissed: Boolean = false
+    )
+    private val _updateState = MutableStateFlow(UpdateState())
+    val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
+
     val trollMessages = listOf(
         "EWW. Shame of humanity.",
         "You call yourself a warrior? Pathetic.",
@@ -79,9 +90,9 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
             val newBots  = BotSimulator.advanceSimulation(com.tanay.warrior2026.data.generateBots())
             val botsJson = BotSimulator.saveBots(newBots)
             val new = _state.value.copy(
-                userProfile        = profile,
+                userProfile         = profile,
                 hasCompletedProfile = true,
-                botsJson           = botsJson
+                botsJson            = botsJson
             )
             withContext(Dispatchers.Main) {
                 _state.value = new
@@ -185,6 +196,27 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch { repo.saveState(merged) }
         return true
     }
+
+    // ── v2.1.0: Update Checker ────────────────────────────────────────────────
+
+    fun checkForUpdate(currentVersion: String) {
+        viewModelScope.launch {
+            val result = UpdateChecker.check(currentVersion)
+            if (result.hasUpdate) {
+                _updateState.value = UpdateState(
+                    hasUpdate     = true,
+                    latestVersion = result.latestVersion,
+                    downloadUrl   = result.downloadUrl
+                )
+            }
+        }
+    }
+
+    fun dismissUpdate() {
+        _updateState.value = _updateState.value.copy(dismissed = true)
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
 
     private fun extractDomain(url: String): String {
         val cleaned    = url.trim()
