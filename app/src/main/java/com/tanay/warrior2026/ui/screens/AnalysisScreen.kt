@@ -80,10 +80,10 @@ private fun computeRank(state: WarriorState): Pair<String, Color> {
     }
     val pct = if (v + d > 0) (v.toFloat() / (v + d) * 100).toInt() else 0
     return when {
-        pct == 100 -> "⚡ PARAGON"    to Color(0xFFFFD700)
-        pct >= 85  -> "🛡 ADHERENT"  to Color(0xFF1DB954)
-        pct >= 70  -> "⚔ SOLDIER"   to Color(0xFF4FC3F7)
-        pct >= 50  -> "😐 RECRUIT"   to Color(0xFFFF9800)
+        pct >= 88  -> "⚡ PARAGON"   to Color(0xFFFFD700)  // top ~7%  (μ+1.5σ)
+        pct >= 73  -> "🛡 ADHERENT" to Color(0xFF1DB954)  // top ~23% (μ+0.5σ)
+        pct >= 58  -> "⚔ SOLDIER"  to Color(0xFF4FC3F7)  // top ~50% (μ−0.5σ)
+        pct >= 43  -> "😐 RECRUIT"  to Color(0xFFFF9800)  // top ~73% (μ−1.5σ)
         else       -> "💀 FALLEN"    to WarriorRed
     }
 }
