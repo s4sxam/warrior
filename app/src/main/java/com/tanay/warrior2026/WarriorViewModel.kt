@@ -1,7 +1,7 @@
 package com.tanay.warrior2026
 
 // [UPDATE] v2.0.0: Added profile setup, bot simulation, leaderboard state
-
+import com.tanay.warrior2026.UpdateChecker
 import android.app.Application
 import android.os.Build
 import android.os.VibrationEffect
