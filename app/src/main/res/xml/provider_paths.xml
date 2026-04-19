@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    v2.2.0: Paths exposed by FileProvider for APK installs.
+    external-path covers Environment.getExternalStorageDirectory()
+    which is where DownloadManager saves files by default.
+-->
+<paths>
+    <external-path
+        name="external_files"
+        path="." />
+</paths>
