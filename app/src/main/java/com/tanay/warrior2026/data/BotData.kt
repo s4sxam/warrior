@@ -3,9 +3,12 @@ package com.tanay.warrior2026.data
 // ── [NEW] BotData.kt ──────────────────────────────────────────────────────────
 // Holds all data models and name lists for the Phantom Leaderboard system.
 // 1,050 bots total: 150 per region × 7 regions.
+// [UPDATE] v2.2.0: A+ survival probability equation — sigmoid + log momentum
+//                  + plateau fatigue + recovery bonus. Tier from discipline value.
 
 import kotlinx.serialization.Serializable
 import kotlin.math.exp
+import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.random.Random
@@ -175,14 +178,56 @@ data class BotProfile(
     var lastSimulatedDay: String = ""
 )
 
-// ── Momentum & Fatigue Algorithm ──────────────────────────────────────────────
-// P(survival) = D_base + (M × Wm) − e^(S × F)
-// clamped to [0.05, 0.98]
+// ── A+ Momentum & Fatigue Algorithm ──────────────────────────────────────────
+//
+// P(survival) = σ(D) + 0.08·ln(1+M) − 0.35·(1−e^(−F·S)) + R
+//
+// where:
+//   σ(D)  = 1 / (1 + e^(−10·(D−0.5)))   sigmoid of baseDiscipline
+//            → smooth S-curve: weak bots can't "luck" into elite territory
+//   M     = momentum (0–50)
+//            → logarithmic boost: early momentum matters most, then levels off
+//   F     = fatigueFactor (bot-specific, 0.003–0.020)
+//   S     = currentStreak
+//            → plateau fatigue: hurts early streaks hard, then stabilises
+//   R     = recovery bonus when S=0: 0.05·e^(−0.01·totalFails)
+//            → models real psychology: a reset gives a brief motivation surge
+//              but repeated failures erode even that bounce-back
+//
+// Clamped to [0.05, 0.98] — no bot is ever certain to clean or fail.
+//
 fun survivalProbability(bot: BotProfile): Double {
-    val wm        = 0.003   // winning weight per momentum unit
-    val fatigueRaw = exp(bot.currentStreak.toDouble() * bot.fatigueFactor) - 1.0
-    val raw       = bot.baseDiscipline + (bot.momentum * wm) - fatigueRaw
+    // Sigmoid discipline base
+    val sigmoidBase = 1.0 / (1.0 + exp(-10.0 * (bot.baseDiscipline - 0.5)))
+
+    // Logarithmic momentum boost
+    val momentumBoost = 0.08 * ln(1.0 + bot.momentum)
+
+    // Plateau fatigue penalty — (1 − e^(−F·S)) approaches 1 asymptotically
+    val fatiguePenalty = (1.0 - exp(-bot.fatigueFactor * bot.currentStreak)) * 0.35
+
+    // Recovery bonus — fades as total failures accumulate
+    val recoveryBonus = if (bot.currentStreak == 0)
+        0.05 * exp(-bot.totalFailDays * 0.01)
+    else 0.0
+
+    val raw = sigmoidBase + momentumBoost - fatiguePenalty + recoveryBonus
     return raw.coerceIn(0.05, 0.98)
+}
+
+// ── Tier — derived from actual discipline value, not arbitrary ID ─────────────
+// Matches the generation ranges in generateBots() exactly:
+//   Tier 1 Elite       → D ∈ [0.96, 0.99)
+//   Tier 2 Advanced    → D ∈ [0.91, 0.96)
+//   Tier 3 Intermediate→ D ∈ [0.84, 0.91)
+//   Tier 4 Developing  → D ∈ [0.72, 0.84)
+//   Tier 5 Struggling  → D ∈ [0.40, 0.72)
+fun tierOf(bot: BotProfile): String = when {
+    bot.baseDiscipline >= 0.96 -> "1 — Elite"
+    bot.baseDiscipline >= 0.91 -> "2 — Advanced"
+    bot.baseDiscipline >= 0.84 -> "3 — Intermediate"
+    bot.baseDiscipline >= 0.72 -> "4 — Developing"
+    else                       -> "5 — Struggling"
 }
 
 // ── Bot generation ────────────────────────────────────────────────────────────
@@ -193,7 +238,6 @@ fun generateBots(): List<BotProfile> {
     WarriorRegion.entries.forEachIndexed { rIdx, region ->
         val names = namesForRegion(region).shuffled(Random(rIdx.toLong() * 7919L))
         repeat(150) { i ->
-            // Assign tier based on initial rank position
             val (dBase, fFactor) = when {
                 i < 10  -> Pair(Random.nextDouble(0.96, 0.99), Random.nextDouble(0.003, 0.005))   // Tier 1 Elite
                 i < 30  -> Pair(Random.nextDouble(0.91, 0.96), Random.nextDouble(0.005, 0.008))   // Tier 2
@@ -203,12 +247,12 @@ fun generateBots(): List<BotProfile> {
             }
             bots.add(
                 BotProfile(
-                    id              = globalId++,
-                    name            = names.getOrElse(i) { "Warrior${globalId}" },
-                    region          = region.name,
-                    baseDiscipline  = dBase,
-                    fatigueFactor   = fFactor,
-                    seed            = (rIdx * 150L + i) * 31337L
+                    id             = globalId++,
+                    name           = names.getOrElse(i) { "Warrior${globalId}" },
+                    region         = region.name,
+                    baseDiscipline = dBase,
+                    fatigueFactor  = fFactor,
+                    seed           = (rIdx * 150L + i) * 31337L
                 )
             )
         }
@@ -217,9 +261,6 @@ fun generateBots(): List<BotProfile> {
 }
 
 // ── Procedural calendar generation (never stored, generated on demand) ────────
-// Returns a map of date-string → true (clean) / false (failed)
-// Generated deterministically from bot seed + consistency DNA so it's always
-// identical when the user taps the same bot profile
 fun generateBotCalendar(bot: BotProfile, days: Int = 365): Map<String, Boolean> {
     val rng = Random(bot.seed)
     val result = LinkedHashMap<String, Boolean>()
@@ -228,11 +269,11 @@ fun generateBotCalendar(bot: BotProfile, days: Int = 365): Map<String, Boolean> 
     var tempMomentum = 0.0
 
     repeat(days) { dayIdx ->
-        val date   = startDate.plusDays(dayIdx.toLong())
-        val key    = date.format(DATE_FORMATTER)
+        val date    = startDate.plusDays(dayIdx.toLong())
+        val key     = date.format(DATE_FORMATTER)
         val tempBot = bot.copy(currentStreak = tempStreak, momentum = tempMomentum)
-        val prob   = survivalProbability(tempBot)
-        val clean  = rng.nextDouble() < prob
+        val prob    = survivalProbability(tempBot)
+        val clean   = rng.nextDouble() < prob
         result[key] = clean
         if (clean) {
             tempStreak++
