@@ -3,10 +3,12 @@ package com.tanay.warrior2026.data
 // ── [NEW] BotSimulator.kt ─────────────────────────────────────────────────────
 // Runs the Momentum & Fatigue Algorithm for all 1,050 bots.
 // Called every time the user opens the app — advances simulation day by day.
+// [UPDATE] v2.2.0: A+ logarithmic streak points — points = 2 × (1 + floor(ln(1+streak)))
 
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.time.LocalDate
+import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.random.Random
@@ -33,15 +35,13 @@ object BotSimulator {
      * Returns updated list.
      */
     fun advanceSimulation(bots: List<BotProfile>): List<BotProfile> {
-        val yesterday  = LocalDate.now().minusDays(1)
-        val todayStr   = todayKey()
+        val yesterday = LocalDate.now().minusDays(1)
 
         return bots.map { bot ->
             var b = bot
 
-            // Determine the start date for simulation
             val startDate: LocalDate = if (b.lastSimulatedDay.isBlank()) {
-                LocalDate.now().minusDays(365)  // first ever run: bootstrap 365 days
+                LocalDate.now().minusDays(365)
             } else {
                 runCatching {
                     LocalDate.parse(b.lastSimulatedDay, DATE_FORMATTER).plusDays(1)
@@ -49,28 +49,29 @@ object BotSimulator {
             }
 
             var simDate = startDate
-            val rng = Random(b.seed xor simDate.toEpochDay())
 
             while (!simDate.isAfter(yesterday)) {
-                val prob  = survivalProbability(b)
-                // Use a seeded random per-day so results are reproducible
+                val prob   = survivalProbability(b)
                 val dayRng = Random(b.seed xor simDate.toEpochDay() xor 0xDEADBEEFL)
-                val clean = dayRng.nextDouble() < prob
+                val clean  = dayRng.nextDouble() < prob
 
                 if (clean) {
+                    // A+ points: 2 × (1 + floor(ln(1 + streak)))
+                    // Day 1 → 2pts, Day 7 → 6pts, Day 30 → 8pts, Day 90 → 10pts
+                    val streakBonus = ln(1.0 + b.currentStreak).toInt().coerceAtLeast(0)
                     b = b.copy(
-                        points        = b.points + 2,
-                        currentStreak = b.currentStreak + 1,
-                        momentum      = min(b.momentum + 1.0, 50.0),
-                        totalCleanDays = b.totalCleanDays + 1,
+                        points           = b.points + (2 * (1 + streakBonus)),
+                        currentStreak    = b.currentStreak + 1,
+                        momentum         = min(b.momentum + 1.0, 50.0),
+                        totalCleanDays   = b.totalCleanDays + 1,
                         lastSimulatedDay = simDate.format(DATE_FORMATTER)
                     )
                 } else {
                     b = b.copy(
-                        points        = 0,
-                        currentStreak = 0,
-                        momentum      = max(b.momentum - 3.0, 0.0),
-                        totalFailDays  = b.totalFailDays + 1,
+                        points           = 0,
+                        currentStreak    = 0,
+                        momentum         = max(b.momentum - 3.0, 0.0),
+                        totalFailDays    = b.totalFailDays + 1,
                         lastSimulatedDay = simDate.format(DATE_FORMATTER)
                     )
                 }
@@ -90,8 +91,8 @@ object BotSimulator {
         val points: Int,
         val region: String,
         val isUser: Boolean,
-        val botId: Int = -1,        // -1 for real user
-        val winRate: Float = 0f     // 0..100
+        val botId: Int = -1,
+        val winRate: Float = 0f
     )
 
     fun regionalLeaderboard(
@@ -121,23 +122,21 @@ object BotSimulator {
     ): List<LeaderboardEntry> {
         val entries = mutableListOf<LeaderboardEntry>()
 
-        // Add all bots
         bots.forEach { bot ->
             val total = (bot.totalCleanDays + bot.totalFailDays).coerceAtLeast(1)
             entries.add(
                 LeaderboardEntry(
-                    rank     = 0,
-                    name     = bot.name,
-                    points   = bot.points,
-                    region   = bot.region,
-                    isUser   = false,
-                    botId    = bot.id,
-                    winRate  = (bot.totalCleanDays.toFloat() / total * 100f)
+                    rank    = 0,
+                    name    = bot.name,
+                    points  = bot.points,
+                    region  = bot.region,
+                    isUser  = false,
+                    botId   = bot.id,
+                    winRate = (bot.totalCleanDays.toFloat() / total * 100f)
                 )
             )
         }
 
-        // Add user
         entries.add(
             LeaderboardEntry(
                 rank    = 0,
@@ -149,7 +148,6 @@ object BotSimulator {
             )
         )
 
-        // Sort and rank
         val sorted = entries.sortedByDescending { it.points }
         return sorted.mapIndexed { i, e -> e.copy(rank = i + 1) }
     }
