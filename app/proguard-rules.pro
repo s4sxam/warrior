@@ -6,4 +6,4 @@
 -keepclasseswithmembers class **$$serializer {
     static **$$serializer INSTANCE;
 }
-@kotlinx.serialization.Serializable class ** { *; }
+-keep @kotlinx.serialization.Serializable class ** { *; }
