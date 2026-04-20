@@ -67,8 +67,10 @@ object BotSimulator {
                         lastSimulatedDay = simDate.format(DATE_FORMATTER)
                     )
                 } else {
+                    // Deduct 5 points on relapse (floor at 0) — matches user behaviour
+                    // where past clean-day points are preserved and only momentum is lost
                     b = b.copy(
-                        points           = 0,
+                        points           = maxOf(b.points - 5, 0),
                         currentStreak    = 0,
                         momentum         = max(b.momentum - 3.0, 0.0),
                         totalFailDays    = b.totalFailDays + 1,
@@ -99,26 +101,32 @@ object BotSimulator {
         bots: List<BotProfile>,
         userRegion: String,
         userName: String,
-        userPoints: Int
+        userPoints: Int,
+        userTotalClean: Int = 0,
+        userTotalLogged: Int = 0
     ): List<LeaderboardEntry> {
         val regional = bots.filter { it.region == userRegion }
-        return buildBoard(regional, userName, userPoints, userRegion)
+        return buildBoard(regional, userName, userPoints, userRegion, userTotalClean, userTotalLogged)
     }
 
     fun globalLeaderboard(
         bots: List<BotProfile>,
         userName: String,
         userPoints: Int,
-        userRegion: String
+        userRegion: String,
+        userTotalClean: Int = 0,
+        userTotalLogged: Int = 0
     ): List<LeaderboardEntry> {
-        return buildBoard(bots, userName, userPoints, userRegion)
+        return buildBoard(bots, userName, userPoints, userRegion, userTotalClean, userTotalLogged)
     }
 
     private fun buildBoard(
         bots: List<BotProfile>,
         userName: String,
         userPoints: Int,
-        userRegion: String
+        userRegion: String,
+        userTotalClean: Int,
+        userTotalLogged: Int
     ): List<LeaderboardEntry> {
         val entries = mutableListOf<LeaderboardEntry>()
 
@@ -137,6 +145,10 @@ object BotSimulator {
             )
         }
 
+        val userWinRate = if (userTotalLogged > 0)
+            userTotalClean.toFloat() / userTotalLogged * 100f
+        else 0f
+
         entries.add(
             LeaderboardEntry(
                 rank    = 0,
@@ -144,7 +156,7 @@ object BotSimulator {
                 points  = userPoints,
                 region  = userRegion,
                 isUser  = true,
-                winRate = 0f
+                winRate = userWinRate
             )
         )
 
