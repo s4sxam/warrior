@@ -19,21 +19,30 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    signingConfigs {
-        create("release") {
-            storeFile = file(System.getenv("KEY_STORE_PATH") ?: "warrior-release.jks")
-            storePassword = System.getenv("KEY_STORE_PASSWORD")
-                ?: error("KEY_STORE_PASSWORD env var not set")
-            keyAlias = System.getenv("KEY_ALIAS") ?: "warrior"
-            keyPassword = System.getenv("KEY_PASSWORD")
-                ?: error("KEY_PASSWORD env var not set")
+    // Signing is optional at config time — only required when building a release.
+    // Checking for env vars before creating the config prevents a hard failure
+    // during assembleDebug, IDE sync, or gradle wrapper runs where CI secrets
+    // are not present.
+    val keystorePassword = System.getenv("KEY_STORE_PASSWORD")
+    val keyPasswordVal   = System.getenv("KEY_PASSWORD")
+
+    if (keystorePassword != null && keyPasswordVal != null) {
+        signingConfigs {
+            create("release") {
+                storeFile     = file(System.getenv("KEY_STORE_PATH") ?: "warrior-release.jks")
+                storePassword = keystorePassword
+                keyAlias      = System.getenv("KEY_ALIAS") ?: "warrior"
+                keyPassword   = keyPasswordVal
+            }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
-            isMinifyEnabled = true
+            // Only attach signing config if it was created (i.e. CI secrets present)
+            val releaseSigning = runCatching { signingConfigs.getByName("release") }.getOrNull()
+            if (releaseSigning != null) signingConfig = releaseSigning
+            isMinifyEnabled   = true
             isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -46,11 +55,16 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-    kotlinOptions {
-        jvmTarget = "11"
+
+    // kotlinOptions is deprecated in AGP 8.5+ — migrated to compilerOptions
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+        }
     }
+
     buildFeatures {
-        compose = true
+        compose    = true
         buildConfig = true
     }
 }
