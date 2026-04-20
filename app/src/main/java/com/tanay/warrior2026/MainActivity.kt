@@ -353,7 +353,11 @@ fun WarriorApp(
                         )
                         ViewState.ANALYSIS -> AnalysisScreen(state = state)
                         ViewState.ARCHIVE  -> ArchiveScreen(state = state)
-                        ViewState.ABOUT    -> AboutScreen(onExport = onExport, onImport = onImport)
+                        ViewState.ABOUT    -> AboutScreen(
+                            onExport     = onExport,
+                            onImport     = onImport,
+                            onTestUpdate = { viewModel.checkForUpdate("1.0.0") }
+                        )
                     }
                 }
             }
