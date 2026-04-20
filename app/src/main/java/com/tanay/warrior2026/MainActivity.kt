@@ -76,9 +76,10 @@ class MainActivity : ComponentActivity() {
             Warrior2026Theme {
                 val state            by viewModel.state.collectAsStateWithLifecycle()
                 val showConfetti     by viewModel.showConfetti.collectAsStateWithLifecycle()
-                val bots             by viewModel.bots.collectAsStateWithLifecycle()
                 val isGeneratingBots by viewModel.isGeneratingBots.collectAsStateWithLifecycle()
                 val updateState      by viewModel.updateState.collectAsStateWithLifecycle()
+                val regionalBoard    by viewModel.regionalBoard.collectAsStateWithLifecycle()
+                val globalBoard      by viewModel.globalBoard.collectAsStateWithLifecycle()
 
                 when {
                     // Step 1: Original onboarding pages
@@ -256,8 +257,8 @@ class MainActivity : ComponentActivity() {
                             onImport        = { json -> viewModel.importJson(json) },
                             onTestUpdate    = { viewModel.checkForUpdate("1.0.0") },
                             trollMessages   = viewModel.trollMessages,
-                            regionalBoard   = viewModel.regionalLeaderboard(),
-                            globalBoard     = viewModel.globalLeaderboard(),
+                            regionalBoard   = regionalBoard,
+                            globalBoard     = globalBoard,
                             getBotProfile   = { id -> viewModel.getBotProfile(id) }
                         )
                     }
@@ -324,9 +325,14 @@ fun WarriorApp(
                             fontWeight = FontWeight.Black, color = WarriorRed)
                     }
                     if (state.isTodayLogged()) {
-                        IconButton(onClick = onUndoToday) {
-                            Icon(Icons.Filled.Undo, contentDescription = "Undo",
-                                tint = TextTertiary, modifier = Modifier.size(22.dp))
+                        // Only allow undo if today was logged as Victory — can't undo a relapse
+                        val todayKey = com.tanay.warrior2026.data.todayKey()
+                        val todayIsVictory = state.history[todayKey]?.status == "clean"
+                        if (todayIsVictory) {
+                            IconButton(onClick = onUndoToday) {
+                                Icon(Icons.Filled.Undo, contentDescription = "Undo Victory",
+                                    tint = TextTertiary, modifier = Modifier.size(22.dp))
+                            }
                         }
                     }
                 }
@@ -470,7 +476,7 @@ fun MagnifiedDockItem(
                 .clip(CircleShape)
                 .background(
                     if (isSelected) {
-                        if (item.view == ViewState.LEADERBOARD) Color(0xFF1A1400)
+                        if (item.view == ViewState.LEADERBOARD) Color(0xFF001A2E)
                         else Color(0xFF1A0000)
                     } else Color.Transparent
                 ),
