@@ -9,7 +9,7 @@ import androidx.compose.ui.graphics.Color
 val WarriorRed    = Color(0xFFFF3131)
 val DarkRed       = Color(0xFF8B0000)
 val VictoryGreen  = Color(0xFF1DB954)
-val Gold          = Color(0xFFFFD700)
+val Gold          = Color(0xFF00B4FF)  // Arena Blue — replaces gold throughout
 
 // ── Surfaces ───────────────────────────────────────────────
 val BgBlack       = Color(0xFF000000)
