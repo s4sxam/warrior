@@ -8,7 +8,6 @@ package com.tanay.warrior2026.data
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.time.LocalDate
-import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.random.Random
@@ -56,11 +55,9 @@ object BotSimulator {
                 val clean  = dayRng.nextDouble() < prob
 
                 if (clean) {
-                    // A+ points: 2 × (1 + floor(ln(1 + streak)))
-                    // Day 1 → 2pts, Day 7 → 6pts, Day 30 → 8pts, Day 90 → 10pts
-                    val streakBonus = ln(1.0 + b.currentStreak).toInt().coerceAtLeast(0)
+                    // 1 point per clean day — matches user scoring formula
                     b = b.copy(
-                        points           = b.points + (2 * (1 + streakBonus)),
+                        points           = b.points + 1,
                         currentStreak    = b.currentStreak + 1,
                         momentum         = min(b.momentum + 1.0, 50.0),
                         totalCleanDays   = b.totalCleanDays + 1,
