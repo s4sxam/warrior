@@ -20,6 +20,7 @@ import com.tanay.warrior2026.ui.theme.*
 fun AboutScreen(
     onExport: () -> String,
     onImport: (String) -> Boolean,
+    onTestUpdate: () -> Unit = {},
 ) {
     var exportText    by remember { mutableStateOf("") }
     var importInput   by remember { mutableStateOf("") }
@@ -175,6 +176,27 @@ fun AboutScreen(
                         fontWeight = FontWeight.Bold
                     )
                 }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // ── Developer Tools ──
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
+            Text("DEVELOPER TOOLS", fontSize = 13.sp, fontWeight = FontWeight.Black,
+                color = WarriorRed, letterSpacing = 1.sp)
+            Spacer(Modifier.height(4.dp))
+            Text("Force the update dialog to appear using a fake old version.",
+                fontSize = 11.sp, color = TextTertiary)
+            Spacer(Modifier.height(14.dp))
+            Button(
+                onClick  = { onTestUpdate() },
+                modifier = Modifier.fillMaxWidth().height(46.dp),
+                shape    = RoundedCornerShape(14.dp),
+                colors   = ButtonDefaults.buttonColors(containerColor = WarriorRed)
+            ) {
+                Text("TEST UPDATE DIALOG", fontWeight = FontWeight.Black,
+                    fontSize = 13.sp, color = Color.White)
             }
         }
 
