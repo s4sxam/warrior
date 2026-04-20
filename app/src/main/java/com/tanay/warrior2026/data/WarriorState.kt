@@ -7,7 +7,6 @@ package com.tanay.warrior2026.data
 import kotlinx.serialization.Serializable
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import kotlin.math.ln
 
 val DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
 
@@ -62,24 +61,8 @@ data class WarriorState(
 
     fun isTodayLogged(): Boolean = history.containsKey(todayKey())
 
-    // v2.2.0: A+ logarithmic streak multiplier — matches bot scoring formula
-    // Points per clean day = 2 × (1 + floor(ln(1 + streakAtThatDay)))
-    // Day 1 → 2pts | Day 7 → 6pts | Day 30 → 8pts | Day 90 → 10pts
-    // Rewards consistency over raw day count — same formula used for bots
-    val userPoints: Int get() {
-        var pts = 0
-        var currentStreak = 0
-        history.entries.sortedBy { it.key }.forEach { (_, d) ->
-            if (d.status == "clean") {
-                currentStreak++
-                val streakBonus = ln(1.0 + currentStreak).toInt().coerceAtLeast(0)
-                pts += 2 * (1 + streakBonus)
-            } else {
-                currentStreak = 0
-            }
-        }
-        return pts
-    }
+    // 1 point per clean day — simple, transparent, matches what users expect
+    val userPoints: Int get() = totalClean
 }
 
 enum class ViewState { DASHBOARD, ANALYSIS, ARCHIVE, ABOUT, LEADERBOARD }
