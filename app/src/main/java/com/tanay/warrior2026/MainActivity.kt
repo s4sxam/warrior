@@ -251,7 +251,6 @@ class MainActivity : ComponentActivity() {
                             showConfetti    = showConfetti,
                             onLogVictory    = { viewModel.logVictory() },
                             onLogRelapse    = { url -> viewModel.logRelapse(url) },
-                            onUndoToday     = { viewModel.undoToday() },
                             onClearConfetti = { viewModel.clearConfetti() },
                             onExport        = { viewModel.exportJson() },
                             onImport        = { json -> viewModel.importJson(json) },
@@ -261,7 +260,6 @@ class MainActivity : ComponentActivity() {
                             globalBoard     = globalBoard,
                             getBotProfile   = { id -> viewModel.getBotProfile(id) }
                         )
-                    }
                 }
             }
         }
@@ -275,7 +273,6 @@ fun WarriorApp(
     showConfetti: Boolean,
     onLogVictory: () -> Unit,
     onLogRelapse: (String) -> Boolean,
-    onUndoToday: () -> Unit,
     onClearConfetti: () -> Unit,
     onExport: () -> String,
     onImport: (String) -> Boolean,
@@ -315,7 +312,6 @@ fun WarriorApp(
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
@@ -324,17 +320,7 @@ fun WarriorApp(
                         Text("WARRIOR 2026", fontSize = 22.sp,
                             fontWeight = FontWeight.Black, color = WarriorRed)
                     }
-                    if (state.isTodayLogged()) {
-                        // Only allow undo if today was logged as Victory — can't undo a relapse
-                        val todayKey = com.tanay.warrior2026.data.todayKey()
-                        val todayIsVictory = state.history[todayKey]?.status == "clean"
-                        if (todayIsVictory) {
-                            IconButton(onClick = onUndoToday) {
-                                Icon(Icons.Filled.Undo, contentDescription = "Undo Victory",
-                                    tint = TextTertiary, modifier = Modifier.size(22.dp))
-                            }
-                        }
-                    }
+
                 }
 
                 AnimatedContent(
