@@ -29,7 +29,7 @@ object WarriorScheduler {
     fun scheduleMorning(context: Context) {
         val cal = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 6)
-            set(Calendar.MINUTE, Random.nextInt(0, 59)) // FIX: was 0..44 OK but explicit max 59
+            set(Calendar.MINUTE, Random.nextInt(0, 60)) // FIX: was 0..44 OK but explicit max 59
             set(Calendar.SECOND, 0)
             if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
         }
@@ -41,7 +41,7 @@ object WarriorScheduler {
         // Afternoon window is 13:00–14:59 → vary hour too
         val cal = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 13 + Random.nextInt(0, 2)) // 13 or 14
-            set(Calendar.MINUTE, Random.nextInt(0, 59))
+            set(Calendar.MINUTE, Random.nextInt(0, 60))
             set(Calendar.SECOND, 0)
             if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
         }
@@ -51,7 +51,7 @@ object WarriorScheduler {
     fun scheduleEvening(context: Context) {
         val cal = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 20)
-            set(Calendar.MINUTE, Random.nextInt(0, 59))
+            set(Calendar.MINUTE, Random.nextInt(0, 60))
             set(Calendar.SECOND, 0)
             if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
         }
@@ -60,17 +60,17 @@ object WarriorScheduler {
 
     fun scheduleRandomMotivation(context: Context) {
         val delayHours   = Random.nextInt(3, 9)
-        val delayMinutes = Random.nextInt(0, 59)
+        val delayMinutes = Random.nextInt(0, 60)
         val delayMs      = ((delayHours * 60L + delayMinutes) * 60_000L)
         val cal = Calendar.getInstance().apply {
             timeInMillis = System.currentTimeMillis() + delayMs
             val hour = get(Calendar.HOUR_OF_DAY)
             when {
-                hour < 9  -> { set(Calendar.HOUR_OF_DAY, 9 + Random.nextInt(0, 3)); set(Calendar.MINUTE, Random.nextInt(0, 59)) }
+                hour < 9  -> { set(Calendar.HOUR_OF_DAY, 9 + Random.nextInt(0, 3)); set(Calendar.MINUTE, Random.nextInt(0, 60)) }
                 hour >= 23 -> {
                     add(Calendar.DAY_OF_YEAR, 1)
                     set(Calendar.HOUR_OF_DAY, 9 + Random.nextInt(0, 2))
-                    set(Calendar.MINUTE, Random.nextInt(0, 59))
+                    set(Calendar.MINUTE, Random.nextInt(0, 60))
                 }
             }
         }
