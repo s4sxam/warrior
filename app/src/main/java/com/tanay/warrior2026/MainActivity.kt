@@ -260,6 +260,7 @@ class MainActivity : ComponentActivity() {
                             globalBoard     = globalBoard,
                             getBotProfile   = { id -> viewModel.getBotProfile(id) }
                         )
+                    }
                 }
             }
         }
