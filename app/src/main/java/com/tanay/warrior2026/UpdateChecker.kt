@@ -14,7 +14,7 @@ import java.net.URL
 object UpdateChecker {
 
     private const val GITHUB_API =
-        "https://api.github.com/repos/s4sxam/warrior/releases/latest"
+        "https://api.github.com/repos/s4sxam/warrior2026/releases/latest"
 
     data class UpdateResult(
         val hasUpdate: Boolean,
