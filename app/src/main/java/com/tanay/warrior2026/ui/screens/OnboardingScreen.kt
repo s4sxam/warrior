@@ -31,6 +31,12 @@ private data class OnboardPage(
 
 private val PAGES = listOf(
     OnboardPage(
+        "🔒",
+        "YOUR DATA.\nYOUR DEVICE.",
+        "Warrior 2026 has zero internet access.\nNo servers. No accounts. No tracking.\nYour streak lives on your phone and\nnowhere else — ever.",
+        Color(0xFF00B4FF)
+    ),
+    OnboardPage(
         "⚔️",
         "THIS IS WAR.",
         "You're not here to track habits.\nYou're here to win a battle\nagainst the weakest version of yourself.",
@@ -52,7 +58,7 @@ private val PAGES = listOf(
         "🔥",
         "COMMANDER MODE\nACTIVATED.",
         "No excuses. No shortcuts.\nYour streak starts the moment\nyou press BEGIN.",
-        Gold
+        Color(0xFF00B4FF)
     )
 )
 
