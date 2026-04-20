@@ -13,8 +13,8 @@ android {
         applicationId = "com.tanay.warrior2026"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "2.0.0"
+        versionCode = 4
+        versionName = "2.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -22,9 +22,11 @@ android {
     signingConfigs {
         create("release") {
             storeFile = file(System.getenv("KEY_STORE_PATH") ?: "warrior-release.jks")
-            storePassword = System.getenv("KEY_STORE_PASSWORD") ?: "AASSDDFF1@"
+            storePassword = System.getenv("KEY_STORE_PASSWORD")
+                ?: error("KEY_STORE_PASSWORD env var not set")
             keyAlias = System.getenv("KEY_ALIAS") ?: "warrior"
-            keyPassword = System.getenv("KEY_PASSWORD") ?: "AASSDDFF1@"
+            keyPassword = System.getenv("KEY_PASSWORD")
+                ?: error("KEY_PASSWORD env var not set")
         }
     }
 
