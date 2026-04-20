@@ -32,6 +32,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -146,27 +149,36 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    // ── Leaderboard ───────────────────────────────────────────────────────────
+    // ── Leaderboard — reactive StateFlows so UI auto-updates when bots load ──
+    //
+    // Previously these were plain functions that snapshotted _bots.value at call
+    // time. If called before advanceBotsIfNeeded() finished (e.g. immediately after
+    // app reopen), _bots was still emptyList() and only the user appeared.
+    // Combining the two flows makes the leaderboard recompose as soon as bots arrive.
 
-    fun regionalLeaderboard(): List<BotSimulator.LeaderboardEntry> {
-        val s = _state.value
-        return BotSimulator.regionalLeaderboard(
-            bots       = _bots.value,
-            userRegion = s.userProfile.region,
-            userName   = s.userProfile.name,
-            userPoints = s.userPoints
-        )
-    }
+    val regionalBoard: StateFlow<List<BotSimulator.LeaderboardEntry>> =
+        combine(_bots, _state) { bots, s ->
+            BotSimulator.regionalLeaderboard(
+                bots            = bots,
+                userRegion      = s.userProfile.region,
+                userName        = s.userProfile.name,
+                userPoints      = s.userPoints,
+                userTotalClean  = s.totalClean,
+                userTotalLogged = s.totalClean + s.totalFailed
+            )
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    fun globalLeaderboard(): List<BotSimulator.LeaderboardEntry> {
-        val s = _state.value
-        return BotSimulator.globalLeaderboard(
-            bots       = _bots.value,
-            userName   = s.userProfile.name,
-            userPoints = s.userPoints,
-            userRegion = s.userProfile.region
-        )
-    }
+    val globalBoard: StateFlow<List<BotSimulator.LeaderboardEntry>> =
+        combine(_bots, _state) { bots, s ->
+            BotSimulator.globalLeaderboard(
+                bots            = bots,
+                userName        = s.userProfile.name,
+                userPoints      = s.userPoints,
+                userRegion      = s.userProfile.region,
+                userTotalClean  = s.totalClean,
+                userTotalLogged = s.totalClean + s.totalFailed
+            )
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     fun getBotProfile(botId: Int): BotProfile? = _bots.value.find { it.id == botId }
 
