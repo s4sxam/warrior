@@ -8,7 +8,6 @@ package com.tanay.warrior2026.data
 
 import kotlinx.serialization.Serializable
 import kotlin.math.exp
-import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.random.Random
@@ -178,41 +177,22 @@ data class BotProfile(
     var lastSimulatedDay: String = ""
 )
 
-// ── A+ Momentum & Fatigue Algorithm ──────────────────────────────────────────
+// ── Momentum & Fatigue Algorithm ─────────────────────────────────────────────
 //
-// P(survival) = σ(D) + 0.08·ln(1+M) − 0.35·(1−e^(−F·S)) + R
+// P(survival) = D_base + (M × W_m) − e^(S × F)
 //
 // where:
-//   σ(D)  = 1 / (1 + e^(−10·(D−0.5)))   sigmoid of baseDiscipline
-//            → smooth S-curve: weak bots can't "luck" into elite territory
-//   M     = momentum (0–50)
-//            → logarithmic boost: early momentum matters most, then levels off
-//   F     = fatigueFactor (bot-specific, 0.003–0.020)
-//   S     = currentStreak
-//            → plateau fatigue: hurts early streaks hard, then stabilises
-//   R     = recovery bonus when S=0: 0.05·e^(−0.01·totalFails)
-//            → models real psychology: a reset gives a brief motivation surge
-//              but repeated failures erode even that bounce-back
+//   D_base = baseDiscipline (0.0–1.0)
+//   M      = momentum (0–50), W_m = 0.005
+//   S      = currentStreak
+//   F      = fatigueFactor (0.003–0.020)
 //
-// Clamped to [0.05, 0.98] — no bot is ever certain to clean or fail.
+// Clamped to [0.05, 0.98]
 //
 fun survivalProbability(bot: BotProfile): Double {
-    // Sigmoid discipline base
-    val sigmoidBase = 1.0 / (1.0 + exp(-10.0 * (bot.baseDiscipline - 0.5)))
-
-    // Logarithmic momentum boost
-    val momentumBoost = 0.08 * ln(1.0 + bot.momentum)
-
-    // Plateau fatigue penalty — (1 − e^(−F·S)) approaches 1 asymptotically
-    val fatiguePenalty = (1.0 - exp(-bot.fatigueFactor * bot.currentStreak)) * 0.35
-
-    // Recovery bonus — fades as total failures accumulate
-    val recoveryBonus = if (bot.currentStreak == 0)
-        0.05 * exp(-bot.totalFailDays * 0.01)
-    else 0.0
-
-    val raw = sigmoidBase + momentumBoost - fatiguePenalty + recoveryBonus
-    return raw.coerceIn(0.05, 0.98)
+    val base    = bot.baseDiscipline + (bot.momentum * 0.005)
+    val fatigue = exp(bot.fatigueFactor * bot.currentStreak)
+    return (base - fatigue).coerceIn(0.05, 0.98)
 }
 
 // ── Tier — derived from actual discipline value, not arbitrary ID ─────────────
