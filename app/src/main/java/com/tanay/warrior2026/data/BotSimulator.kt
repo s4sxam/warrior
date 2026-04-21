@@ -3,7 +3,7 @@ package com.tanay.warrior2026.data
 // ── [NEW] BotSimulator.kt ─────────────────────────────────────────────────────
 // Runs the Momentum & Fatigue Algorithm for all 1,050 bots.
 // Called every time the user opens the app — advances simulation day by day.
-// [UPDATE] v2.2.0: A+ logarithmic streak points — points = 2 × (1 + floor(ln(1+streak)))
+// [UPDATE] v2.3.0: Fixed — 2 pts/day, simulation starts from app launch (2026-04-12)
 
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -40,7 +40,7 @@ object BotSimulator {
             var b = bot
 
             val startDate: LocalDate = if (b.lastSimulatedDay.isBlank()) {
-                LocalDate.of(2026, 4, 12) // App launch date — never simulate before this
+                LocalDate.of(2026, 4, 12)
             } else {
                 runCatching {
                     LocalDate.parse(b.lastSimulatedDay, DATE_FORMATTER).plusDays(1)
@@ -55,7 +55,7 @@ object BotSimulator {
                 val clean  = dayRng.nextDouble() < prob
 
                 if (clean) {
-                    // 2 points per clean day — flat, simple, matches user scoring
+                    // 2 points per clean day — correct scoring formula
                     b = b.copy(
                         points           = b.points + 2,
                         currentStreak    = b.currentStreak + 1,
@@ -64,9 +64,10 @@ object BotSimulator {
                         lastSimulatedDay = simDate.format(DATE_FORMATTER)
                     )
                 } else {
-                    // No point deduction on relapse — just lose momentum
+                    // Deduct 5 points on relapse (floor at 0) — matches user behaviour
+                    // where past clean-day points are preserved and only momentum is lost
                     b = b.copy(
-                        points           = b.points,
+                        points           = maxOf(b.points - 5, 0),
                         currentStreak    = 0,
                         momentum         = max(b.momentum - 3.0, 0.0),
                         totalFailDays    = b.totalFailDays + 1,
