@@ -61,8 +61,8 @@ data class WarriorState(
 
     fun isTodayLogged(): Boolean = history.containsKey(todayKey())
 
-    // 1 point per clean day — simple, transparent, matches what users expect
-    val userPoints: Int get() = totalClean
+    // 2 points per clean day — flat, simple
+    val userPoints: Int get() = totalClean * 2
 }
 
 enum class ViewState { DASHBOARD, ANALYSIS, ARCHIVE, ABOUT, LEADERBOARD }
