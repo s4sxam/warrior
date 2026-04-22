@@ -1,22 +1,23 @@
 package com.tanay.warrior2026.data
 
-// ── [NEW] BotSimulator.kt ─────────────────────────────────────────────────────
-// Runs the Momentum & Fatigue Algorithm for all 1,050 bots.
-// Called every time the user opens the app — advances simulation day by day.
-// [UPDATE] v2.3.0: Fixed — 2 pts/day, simulation starts from app launch (2026-04-12)
+// [UPDATE] v3.0.0: Human-behaviour simulation rewrite
+//   - advanceSimulation now tracks day-of-week, life events per bot
+//   - Points use dynamic pointsForCleanDay / pointsLostOnRelapse from BotData
+//   - LeaderboardEntry exposes archetype for UI display
+//   - All logic fully seeded — deterministic per bot
 
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.time.LocalDate
-import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.max
 import kotlin.random.Random
 
 object BotSimulator {
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    /** Deserialize bots from stored JSON string. Returns generated bots if empty. */
+    /** Deserialize bots from stored JSON. Returns freshly generated bots if blank/corrupt. */
     fun loadBots(botsJson: String): List<BotProfile> {
         if (botsJson.isBlank()) return generateBots()
         return runCatching {
@@ -24,14 +25,19 @@ object BotSimulator {
         }.getOrElse { generateBots() }
     }
 
-    /** Serialize bots to JSON string for storage. */
+    /** Serialize bots to JSON for storage. */
     fun saveBots(bots: List<BotProfile>): String =
         json.encodeToString(bots)
 
     /**
-     * Advance the simulation from each bot's lastSimulatedDay up to yesterday.
-     * We never simulate today — the user's own log determines today.
-     * Returns updated list.
+     * Advance every bot day-by-day from lastSimulatedDay up to yesterday.
+     * Today is always excluded — the user's own log determines today's score.
+     *
+     * Per day:
+     *   1. Determine if a life event starts (seeded RNG, bot-specific interval)
+     *   2. Determine day-of-week for weekly rhythm term
+     *   3. Compute survivalProbability with all terms
+     *   4. Award/deduct points using dynamic scoring from BotData
      */
     fun advanceSimulation(bots: List<BotProfile>): List<BotProfile> {
         val yesterday = LocalDate.now().minusDays(1)
@@ -47,43 +53,63 @@ object BotSimulator {
                 }.getOrElse { yesterday }
             }
 
-            var simDate = startDate
+            // Seeded RNG for life-event decisions — separate from survivalProbability RNG
+            // Use bot seed + epoch of startDate so it's reproducible across app launches
+            val lifeRng = Random(b.seed xor startDate.toEpochDay() xor 0xCAFEBABEL)
+
+            var simDate          = startDate
+            var lifeEventDaysLeft = b.lifeEventDaysLeft.coerceAtLeast(0)
 
             while (!simDate.isAfter(yesterday)) {
-                val prob   = survivalProbability(b)
+                // ── Life event tick ───────────────────────────────────────
+                if (lifeEventDaysLeft > 0) {
+                    lifeEventDaysLeft--
+                } else if (lifeRng.nextInt(b.lifeEventInterval) == 0) {
+                    // New life event starts: lasts 3–14 days
+                    lifeEventDaysLeft = lifeRng.nextInt(3, 15)
+                }
+                val lifeEventActive = lifeEventDaysLeft > 0
+
+                // ── Day-of-week for weekly rhythm (0=Mon … 6=Sun) ────────
+                val dayOfWeek = simDate.dayOfWeek.value - 1
+
+                // ── Deterministic clean/fail decision ─────────────────────
                 val dayRng = Random(b.seed xor simDate.toEpochDay() xor 0xDEADBEEFL)
+                val prob   = survivalProbability(b, dayOfWeek, lifeEventActive)
                 val clean  = dayRng.nextDouble() < prob
 
                 if (clean) {
-                    // 2 points per clean day — correct scoring formula
+                    val gained = pointsForCleanDay(b.currentStreak, b.momentum)
                     b = b.copy(
-                        points           = b.points + 2,
-                        currentStreak    = b.currentStreak + 1,
-                        momentum         = min(b.momentum + 1.0, 50.0),
-                        totalCleanDays   = b.totalCleanDays + 1,
-                        lastSimulatedDay = simDate.format(DATE_FORMATTER)
+                        points            = b.points + gained,
+                        currentStreak     = b.currentStreak + 1,
+                        momentum          = min(b.momentum + 1.0, 50.0),
+                        totalCleanDays    = b.totalCleanDays + 1,
+                        inLifeEvent       = lifeEventActive,
+                        lifeEventDaysLeft = lifeEventDaysLeft,
+                        lastSimulatedDay  = simDate.format(DATE_FORMATTER)
                     )
                 } else {
-                    // Deduct 5 points on relapse (floor at 0) — matches user behaviour
-                    // where past clean-day points are preserved and only momentum is lost
+                    val lost = pointsLostOnRelapse(b.currentStreak)
                     b = b.copy(
-                        points           = maxOf(b.points - 5, 0),
-                        currentStreak    = 0,
-                        momentum         = max(b.momentum - 3.0, 0.0),
-                        totalFailDays    = b.totalFailDays + 1,
-                        lastSimulatedDay = simDate.format(DATE_FORMATTER)
+                        points            = max(b.points - lost, 0),
+                        currentStreak     = 0,
+                        momentum          = max(b.momentum - 3.0, 0.0),
+                        totalFailDays     = b.totalFailDays + 1,
+                        inLifeEvent       = lifeEventActive,
+                        lifeEventDaysLeft = lifeEventDaysLeft,
+                        lastSimulatedDay  = simDate.format(DATE_FORMATTER)
                     )
                 }
+
                 simDate = simDate.plusDays(1)
             }
             b
         }
     }
 
-    /**
-     * Build a leaderboard entry list sorted by points descending.
-     * Combines user + bots for the given region, then global.
-     */
+    // ── Leaderboard ───────────────────────────────────────────────────────────
+
     data class LeaderboardEntry(
         val rank: Int,
         val name: String,
@@ -91,7 +117,9 @@ object BotSimulator {
         val region: String,
         val isUser: Boolean,
         val botId: Int = -1,
-        val winRate: Float = 0f
+        val winRate: Float = 0f,
+        val archetype: String = "",       // BotArchetype.name — available for UI
+        val currentStreak: Int = 0
     )
 
     fun regionalLeaderboard(
@@ -100,10 +128,12 @@ object BotSimulator {
         userName: String,
         userPoints: Int,
         userTotalClean: Int = 0,
-        userTotalLogged: Int = 0
+        userTotalLogged: Int = 0,
+        userStreak: Int = 0
     ): List<LeaderboardEntry> {
         val regional = bots.filter { it.region == userRegion }
-        return buildBoard(regional, userName, userPoints, userRegion, userTotalClean, userTotalLogged)
+        return buildBoard(regional, userName, userPoints, userRegion,
+                          userTotalClean, userTotalLogged, userStreak)
     }
 
     fun globalLeaderboard(
@@ -112,9 +142,11 @@ object BotSimulator {
         userPoints: Int,
         userRegion: String,
         userTotalClean: Int = 0,
-        userTotalLogged: Int = 0
+        userTotalLogged: Int = 0,
+        userStreak: Int = 0
     ): List<LeaderboardEntry> {
-        return buildBoard(bots, userName, userPoints, userRegion, userTotalClean, userTotalLogged)
+        return buildBoard(bots, userName, userPoints, userRegion,
+                          userTotalClean, userTotalLogged, userStreak)
     }
 
     private fun buildBoard(
@@ -123,7 +155,8 @@ object BotSimulator {
         userPoints: Int,
         userRegion: String,
         userTotalClean: Int,
-        userTotalLogged: Int
+        userTotalLogged: Int,
+        userStreak: Int
     ): List<LeaderboardEntry> {
         val entries = mutableListOf<LeaderboardEntry>()
 
@@ -131,13 +164,15 @@ object BotSimulator {
             val total = (bot.totalCleanDays + bot.totalFailDays).coerceAtLeast(1)
             entries.add(
                 LeaderboardEntry(
-                    rank    = 0,
-                    name    = bot.name,
-                    points  = bot.points,
-                    region  = bot.region,
-                    isUser  = false,
-                    botId   = bot.id,
-                    winRate = (bot.totalCleanDays.toFloat() / total * 100f)
+                    rank          = 0,
+                    name          = bot.name,
+                    points        = bot.points,
+                    region        = bot.region,
+                    isUser        = false,
+                    botId         = bot.id,
+                    winRate       = bot.totalCleanDays.toFloat() / total * 100f,
+                    archetype     = bot.archetype,
+                    currentStreak = bot.currentStreak
                 )
             )
         }
@@ -148,16 +183,18 @@ object BotSimulator {
 
         entries.add(
             LeaderboardEntry(
-                rank    = 0,
-                name    = userName.ifBlank { "You" },
-                points  = userPoints,
-                region  = userRegion,
-                isUser  = true,
-                winRate = userWinRate
+                rank          = 0,
+                name          = userName.ifBlank { "You" },
+                points        = userPoints,
+                region        = userRegion,
+                isUser        = true,
+                winRate       = userWinRate,
+                currentStreak = userStreak
             )
         )
 
-        val sorted = entries.sortedByDescending { it.points }
-        return sorted.mapIndexed { i, e -> e.copy(rank = i + 1) }
+        return entries
+            .sortedByDescending { it.points }
+            .mapIndexed { i, e -> e.copy(rank = i + 1) }
     }
 }
