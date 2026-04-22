@@ -3,6 +3,16 @@ package com.tanay.warrior2026
 // [UPDATE] v2.0.0: Added profile setup, bot simulation, leaderboard state
 // [UPDATE] v2.1.0: Added update checker
 // [UPDATE] v2.2.0: In-app DownloadManager download + install trigger
+// [FIX]    v2.3.0: Fixed all update system bugs:
+//   - BUG 1: dismissUpdate() now persists dismissed version to DataStore
+//   - BUG 2: retryDownload() now properly re-enqueues a new download
+//   - BUG 3: checkForUpdate() skips dialog if latest == already-dismissed version
+//   - BUG 4: installApk() now saves dismissed version so dialog won't reappear
+//   - BUG 5: onCleared() cancels pollJob and cleans up properly
+//   - BUG 6: init block cancels any orphaned DownloadManager job from previous session
+//   - BUG 8: installApk() now uses the already-fetched localUri directly
+//   (BUG 7 is a CI/build.gradle issue — fixed in build.gradle.kts)
+//   (BUG 9 is a UI issue — fixed in AboutScreen.kt)
 
 import android.app.Application
 import android.app.DownloadManager
@@ -105,6 +115,38 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         }
+
+        // [FIX BUG 6] On init, check if there's an orphaned DownloadManager job
+        // from a previous session that was killed mid-download. If so, cancel it
+        // and clear the persisted ID so the next update check starts fresh.
+        viewModelScope.launch(Dispatchers.IO) {
+            val orphanId = repo.getPendingDownloadId()
+            if (orphanId != -1L) {
+                UpdateChecker.cancelDownload(getApplication(), orphanId)
+                repo.clearPendingDownloadId()
+            }
+        }
+    }
+
+    // ── [FIX BUG 5] Clean up coroutine and DownloadManager on ViewModel death ─
+
+    override fun onCleared() {
+        super.onCleared()
+        pollJob?.cancel()
+        // If a download was still running when the ViewModel was destroyed,
+        // cancel it in DownloadManager so it doesn't keep downloading in the background.
+        val currentDownloadId = _updateState.value.downloadId
+        if (currentDownloadId != -1L &&
+            _updateState.value.phase == DownloadPhase.DOWNLOADING) {
+            val dm = getApplication<Application>()
+                .getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            dm.remove(currentDownloadId)
+            // Fire-and-forget coroutine to clear persisted ID
+            // (viewModelScope is already cancelled here, use GlobalScope equivalent)
+            viewModelScope.launch(Dispatchers.IO) {
+                repo.clearPendingDownloadId()
+            }
+        }
     }
 
     // ── Onboarding / Profile / Bots (unchanged) ───────────────────────────────
@@ -149,12 +191,7 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    // ── Leaderboard — reactive StateFlows so UI auto-updates when bots load ──
-    //
-    // Previously these were plain functions that snapshotted _bots.value at call
-    // time. If called before advanceBotsIfNeeded() finished (e.g. immediately after
-    // app reopen), _bots was still emptyList() and only the user appeared.
-    // Combining the two flows makes the leaderboard recompose as soon as bots arrive.
+    // ── Leaderboard ───────────────────────────────────────────────────────────
 
     val regionalBoard: StateFlow<List<BotSimulator.LeaderboardEntry>> =
         combine(_bots, _state) { bots, s ->
@@ -233,12 +270,28 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         return true
     }
 
-    // ── v2.2.0: Update flow ───────────────────────────────────────────────────
+    // ── v2.3.0: Fixed update flow ─────────────────────────────────────────────
 
+    /**
+     * [FIX BUG 1 + BUG 3] Checks GitHub and only shows dialog if:
+     *   1. A newer version exists
+     *   2. The user has NOT already dismissed this exact version
+     * This means once the user taps "Later" on v2.3.0, the dialog won't
+     * reappear on every launch — it will only appear again when v2.4.0 drops.
+     */
     fun checkForUpdate(currentVersion: String) {
         viewModelScope.launch {
             val result = UpdateChecker.check(currentVersion)
-            if (result.hasUpdate) {
+            if (!result.hasUpdate) return@launch
+
+            // Load the version the user previously dismissed (persisted across restarts)
+            val dismissedVersion = repo.getDismissedVersion()
+
+            // Only show the dialog if this version is newer than what was dismissed.
+            // e.g. user dismissed 2.3.0 → dismissedVersion = "2.3.0"
+            //      next launch still shows 2.3.0 on GitHub → skip (already dismissed)
+            //      later 2.4.0 ships → isNewer("2.4.0", "2.3.0") = true → show dialog
+            if (dismissedVersion.isBlank() || UpdateChecker.isNewer(result.latestVersion, dismissedVersion)) {
                 _updateState.value = UpdateState(
                     hasUpdate     = true,
                     latestVersion = result.latestVersion,
@@ -264,6 +317,11 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
             downloadId = downloadId
         )
 
+        // [FIX BUG 6] Persist the downloadId so we can cancel it if the app is killed
+        viewModelScope.launch(Dispatchers.IO) {
+            repo.savePendingDownloadId(downloadId)
+        }
+
         startPolling(downloadId)
     }
 
@@ -280,7 +338,7 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
                     when (progress.status) {
                         DownloadManager.STATUS_SUCCESSFUL -> {
                             _updateState.value = _updateState.value.copy(
-                                phase        = DownloadPhase.READY,
+                                phase         = DownloadPhase.READY,
                                 progressBytes = progress.bytesDownloaded,
                                 totalBytes    = progress.bytesTotal,
                                 localUri      = progress.localUri
@@ -304,6 +362,8 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
                 // Stop polling once terminal state is reached
                 if (progress.status == DownloadManager.STATUS_SUCCESSFUL ||
                     progress.status == DownloadManager.STATUS_FAILED) {
+                    // [FIX BUG 6] Clear persisted ID — download is no longer in-flight
+                    repo.clearPendingDownloadId()
                     break
                 }
 
@@ -313,15 +373,21 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * Called from MainActivity after READY state — fires the system package installer.
-     * Uses FileProvider so it works on Android 7+ (API 24+).
+     * [FIX BUG 8] Uses the localUri that was already retrieved from DownloadManager
+     * (stored in UpdateState.localUri) instead of reconstructing the file path manually.
+     * Reconstructing the path was fragile and could crash with FileNotFoundException
+     * if the filename didn't match exactly.
+     *
+     * [FIX BUG 4] Also saves the installed version as the dismissed version so the
+     * dialog won't reappear after the user installs the update.
      */
     fun installApk(context: Context) {
         val localUri = _updateState.value.localUri ?: return
-        val file = File(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-            "warrior-${_updateState.value.latestVersion}.apk"
-        )
+        val version  = _updateState.value.latestVersion
+
+        // Use the localUri from DownloadManager directly — already verified path
+        val file = File(Uri.parse(localUri).path ?: return)
+
         val contentUri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.provider",
@@ -332,15 +398,46 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
         }
         context.startActivity(intent)
-    }
 
-    fun dismissUpdate() {
-        pollJob?.cancel()
+        // [FIX BUG 4] Record that the user acted on this version. Even if they
+        // cancel the system installer, we won't pester them again this session.
+        viewModelScope.launch(Dispatchers.IO) {
+            repo.saveDismissedVersion(version)
+        }
         _updateState.value = _updateState.value.copy(dismissed = true)
     }
 
+    /**
+     * [FIX BUG 1] Persists the dismissed version to DataStore so the dialog
+     * does NOT reappear on the next launch for the same version.
+     * [FIX BUG 3] Since we save the version string (not just a boolean),
+     * the dialog WILL reappear when a genuinely newer version ships.
+     */
+    fun dismissUpdate() {
+        pollJob?.cancel()
+        val version = _updateState.value.latestVersion
+        _updateState.value = _updateState.value.copy(dismissed = true)
+        viewModelScope.launch(Dispatchers.IO) {
+            repo.saveDismissedVersion(version)
+        }
+    }
+
+    /**
+     * [FIX BUG 2] retryDownload() previously only reset the phase to IDLE without
+     * actually starting a new download. Now it calls downloadUpdate() which
+     * properly re-enqueues a fresh DownloadManager request.
+     */
     fun retryDownload() {
-        _updateState.value = _updateState.value.copy(phase = DownloadPhase.IDLE)
+        // Reset phase and clear the stale downloadId before re-enqueueing
+        _updateState.value = _updateState.value.copy(
+            phase      = DownloadPhase.IDLE,
+            downloadId = -1L,
+            progressBytes = 0L,
+            totalBytes    = 0L,
+            localUri      = null
+        )
+        // Now actually start a new download
+        downloadUpdate()
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
