@@ -51,6 +51,93 @@ The **Archive** screen is a full calendar heatmap — every day you've ever logg
 
 Notifications push you three times a day — morning, afternoon, evening — with messages that actually have teeth. Milestone alerts fire automatically at Day 3, 7, 14, 21, 30, 60, 90, 180, and 365.
 
+The **Leaderboard** puts you against 1,050 simulated competitors across 7 world regions. They aren't bots — they behave like real people struggling with the same thing you are. See below for how this works.
+
+<br/>
+
+---
+
+## The Phantom Leaderboard
+
+1,050 simulated warriors — 150 per region — compete against you in real time. Every bot has a name, a region, a personality, and a history. The leaderboard updates every time you open the app.
+
+### Bot Archetypes
+
+Each bot is assigned one of six personality types that govern how they behave over time:
+
+| Archetype | Behaviour |
+|---|---|
+| ⚙️ **Grinder** | Slow and steady. Rarely spikes, rarely crashes. Most consistent. |
+| ⚡ **Sprinter** | Builds huge streaks fast, then collapses under psychological pressure. |
+| 🔄 **Comeback Kid** | Fails often but recovers faster than anyone. High bounce-back rate. |
+| 💎 **Fragile Elite** | Very high discipline but psychologically brittle — one bad week unravels them. |
+| 🐉 **Underdog** | Low base discipline but capable of surprise winning runs. |
+| 📉 **Plateauer** | Makes good early progress then stagnates for long stretches. |
+
+### Simulation Algorithm (v3.0.0)
+
+Every bot's daily clean/fail outcome is computed from this equation:
+
+```
+P(clean) = clamp(
+    σ(D)              ← sigmoid discipline base
+  + 0.08·ln(1+M)     ← logarithmic momentum boost
+  − 0.35·(1−e^(−F·S))← plateau fatigue (streak length penalty)
+  − Ps·σ(S−Sₜ)       ← psychological pressure beyond streak threshold
+  + A·sin(2π·d/7 + φ)← weekly rhythm (personal weak-day sin wave)
+  + Rm·0.05·e^(−0.01·Tf) ← recovery bonus after relapse (archetype-scaled)
+  − Ev·0.55          ← life event penalty (active during disruption window)
+, 0.05, 0.98)
+```
+
+**Where:**
+- `D` = `baseDiscipline` (0.0–1.0) — intrinsic willpower, seeded per bot
+- `M` = momentum (0–50) — builds on clean days, drops on relapse
+- `F` = `fatigueFactor` — how fast long streaks wear the bot down
+- `S` = current streak length
+- `Ps` = `pressureSensitivity` — archetype-driven (Sprinter = 0.70, Grinder = 0.05)
+- `Sₜ` = `streakThreshold` — streak length before pressure kicks in
+- `A` = `rhythmAmplitude`, `φ` = `rhythmPhaseOffset` — personal weak-day cycle
+- `Rm` = recovery multiplier from archetype config
+- `Tf` = total fail days accumulated
+- `Ev` = `lifeEventSeverity` — active only during a disruption window
+
+**Life events** — every bot has a personal disruption interval (30–70 days). When triggered, a life event lasts 3–14 days and applies the `Ev` penalty for that window. This is why a top-10 bot suddenly drops 40 places and then climbs back — something happened to them.
+
+**Weekly rhythm** — the sin wave means every bot has a personal "weak day" and "strong day" each week, producing natural organic variation that doesn't look algorithmic.
+
+**Psychological pressure** — once a bot's streak crosses their `streakThreshold`, the pressure term activates via a sigmoid curve. Sprinters crack at day 14. Grinders don't crack until day 40+. This is why real people relapse after a long clean run.
+
+### Dynamic Points Scoring
+
+Points are not flat — they scale with consistency, matching the same formula for both bots and the user:
+
+```
+Clean day earned:
+  base          = 2
+  streak bonus  = floor(streak / 7)      (+1 per completed week)
+  momentum bonus= floor(momentum / 10)   (+1 per 10 momentum)
+
+Relapse penalty:
+  base loss     = 3
+  streak tax    = floor(streak / 5)      (longer streak = bigger fall)
+  total capped at 12
+```
+
+A bot on a 30-day streak earns ~6 pts/day. A relapse from that streak costs ~9 pts. This creates real leaderboard drama — ranks shift every day.
+
+### Can the user win?
+
+Yes — but only with genuine consistency. To crack the **global top 10**, you need roughly:
+- 45+ day streak, **or**
+- 80+ total clean days with strong win rate
+
+A casual user won't outrank Tier 1 Grinders. A focused user on a 60-day streak will overtake Sprinters who keep collapsing. The competition is earned, not handed to you.
+
+### Everything is seeded
+
+Every bot's stats, name, archetype, and daily outcomes are fully deterministic — seeded from a fixed value. The same bot always has their rough patch in week 6. Their "story" never changes between app launches, making them feel like real characters with real histories.
+
 <br/>
 
 ---
@@ -67,6 +154,7 @@ Most habit apps are built to keep you opening the app. Warrior 2026 is built to 
 | Streak freezes, grace periods | Relapse = zero. No exceptions. |
 | Notification spam | 3 timed pushes + random motivation 9 AM–10 PM only |
 | Vague history | Full calendar heatmap + trigger domain tracking |
+| No competition | 1,050 simulated human-like rivals across 7 regions |
 
 The notification system doesn't fire at 2 AM. The relapse modal has a troll message. The streak ring counts up from zero every launch so you *feel* how many days you've built. These are intentional decisions, not accidents.
 
@@ -131,6 +219,8 @@ The core loop is done and solid. Here's what's next:
 - **Custom milestone days** — set your own targets beyond the defaults
 - **Biometric lock** — fingerprint protection for your history
 - **Richer charts** — win-rate trend line over the 6-month view
+- **Leaderboard streaks** — show bot streak history on their profile
+- **Region switching** — change your region after onboarding
 
 The roadmap stays lean. Every feature added has to earn its place.
 
