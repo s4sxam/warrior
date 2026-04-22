@@ -3,6 +3,8 @@ package com.tanay.warrior2026.data
 // [UPDATE] v2.0.0: Added UserProfile, botsJson field, LEADERBOARD to ViewState
 // [UPDATE] v2.2.0: A+ userPoints — logarithmic streak multiplier
 //                  A+ rank thresholds — statistically justified (μ±σ model)
+// [UPDATE] v3.0.0: userPoints now uses dynamic per-day scoring matching BotData:
+//                  +2 base + streak bonus + momentum bonus per clean day
 
 import kotlinx.serialization.Serializable
 import java.time.LocalDate
@@ -61,8 +63,26 @@ data class WarriorState(
 
     fun isTodayLogged(): Boolean = history.containsKey(todayKey())
 
-    // 2 points per clean day — flat, simple
-    val userPoints: Int get() = totalClean * 2
+    // Dynamic points matching bot scoring: +2 base + floor(streak/7) + floor(momentum/10)
+    // Replays clean days chronologically so scoring matches bots exactly.
+    val userPoints: Int get() {
+        var total = 0
+        var streak = 0
+        var momentum = 0.0
+        history.entries.sortedBy { it.key }.forEach { (_, d) ->
+            if (d.status == "clean") {
+                total += 2 + (streak / 7) + (momentum / 10).toInt()
+                streak++
+                momentum = minOf(momentum + 1.0, 50.0)
+            } else {
+                val lost = minOf(3 + streak / 5, 12)
+                total = maxOf(total - lost, 0)
+                streak = 0
+                momentum = maxOf(momentum - 3.0, 0.0)
+            }
+        }
+        return total
+    }
 }
 
 enum class ViewState { DASHBOARD, ANALYSIS, ARCHIVE, ABOUT, LEADERBOARD }
