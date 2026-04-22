@@ -1,5 +1,9 @@
 package com.tanay.warrior2026.ui.screens
 
+// [FIX] v2.3.0: Wrapped "DEVELOPER TOOLS" section in BuildConfig.DEBUG guard.
+//               The TEST UPDATE DIALOG button is now invisible in release builds
+//               and only visible when running a debug build from Android Studio.
+
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.tanay.warrior2026.BuildConfig
 import com.tanay.warrior2026.ui.theme.*
 
 @Composable
@@ -181,23 +186,29 @@ fun AboutScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        // ── Developer Tools ──
-        GlassCard(modifier = Modifier.fillMaxWidth()) {
-            Text("DEVELOPER TOOLS", fontSize = 13.sp, fontWeight = FontWeight.Black,
-                color = WarriorRed, letterSpacing = 1.sp)
-            Spacer(Modifier.height(4.dp))
-            Text("Force the update dialog to appear using a fake old version.",
-                fontSize = 11.sp, color = TextTertiary)
-            Spacer(Modifier.height(14.dp))
-            Button(
-                onClick  = { onTestUpdate() },
-                modifier = Modifier.fillMaxWidth().height(46.dp),
-                shape    = RoundedCornerShape(14.dp),
-                colors   = ButtonDefaults.buttonColors(containerColor = WarriorRed)
-            ) {
-                Text("TEST UPDATE DIALOG", fontWeight = FontWeight.Black,
-                    fontSize = 13.sp, color = Color.White)
+        // ── Developer Tools — DEBUG ONLY ──────────────────────────────────────
+        // [FIX BUG 9] This entire section is hidden in release builds.
+        // BuildConfig.DEBUG is true only when running from Android Studio (debug variant).
+        // It is always false in a release APK — users will never see this button.
+        if (BuildConfig.DEBUG) {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Text("DEVELOPER TOOLS", fontSize = 13.sp, fontWeight = FontWeight.Black,
+                    color = WarriorRed, letterSpacing = 1.sp)
+                Spacer(Modifier.height(4.dp))
+                Text("Force the update dialog to appear using a fake old version.",
+                    fontSize = 11.sp, color = TextTertiary)
+                Spacer(Modifier.height(14.dp))
+                Button(
+                    onClick  = { onTestUpdate() },
+                    modifier = Modifier.fillMaxWidth().height(46.dp),
+                    shape    = RoundedCornerShape(14.dp),
+                    colors   = ButtonDefaults.buttonColors(containerColor = WarriorRed)
+                ) {
+                    Text("TEST UPDATE DIALOG", fontWeight = FontWeight.Black,
+                        fontSize = 13.sp, color = Color.White)
+                }
             }
+            Spacer(Modifier.height(16.dp))
         }
 
         Spacer(Modifier.height(40.dp))
