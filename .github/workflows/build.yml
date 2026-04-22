@@ -40,8 +40,28 @@ jobs:
         run: |
           echo "${{ secrets.KEY_STORE_BASE64 }}" | base64 --decode > app/warrior-release.jks
 
+      # [FIX BUG 7] Derive VERSION_NAME from the git tag and VERSION_CODE from
+      # the GitHub run number. Both are passed as environment variables so
+      # build.gradle.kts can read them — the APK's versionName will always
+      # match the tag, and versionCode auto-increments with every CI run.
+      #
+      # On a branch push (no tag), VERSION_NAME falls back to "0.0.0-dev"
+      # so the build still succeeds without showing a fake version to users.
+      - name: Resolve version from tag
+        id: version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF_NAME}"          # e.g. "v2.3.0"
+            echo "VERSION_NAME=${TAG}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION_NAME=0.0.0-dev" >> $GITHUB_OUTPUT
+          fi
+          echo "VERSION_CODE=${{ github.run_number }}" >> $GITHUB_OUTPUT
+
       - name: Build Release APK
         env:
+          VERSION_NAME: ${{ steps.version.outputs.VERSION_NAME }}
+          VERSION_CODE: ${{ steps.version.outputs.VERSION_CODE }}
           KEY_STORE_PATH: warrior-release.jks
           KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
