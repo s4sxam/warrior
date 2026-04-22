@@ -1,16 +1,19 @@
 package com.tanay.warrior2026.data
 
-// ── [NEW] BotData.kt ──────────────────────────────────────────────────────────
-// Holds all data models and name lists for the Phantom Leaderboard system.
-// 1,050 bots total: 150 per region × 7 regions.
-// [UPDATE] v2.2.0: A+ survival probability equation — sigmoid + log momentum
-//                  + plateau fatigue + recovery bonus. Tier from discipline value.
+// [UPDATE] v3.0.0: Full human-behaviour simulation rewrite
+//   - BotArchetype: 6 personality types with unique probability modifiers
+//   - Pressure sensitivity: long streaks psychologically break certain bots
+//   - Weekly rhythm: every bot has a personal "weak day" via sin wave
+//   - Life events: random disruption windows that tank performance temporarily
+//   - Seeded generateBots(): discipline & fatigue now fully deterministic
+//   - Revised points: streak bonuses + momentum bonuses make leaderboard dynamic
 
 import kotlinx.serialization.Serializable
 import kotlin.math.exp
+import kotlin.math.floor
 import kotlin.math.ln
-import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sin
 import kotlin.random.Random
 
 // ── Regions ───────────────────────────────────────────────────────────────────
@@ -22,6 +25,24 @@ enum class WarriorRegion(val displayName: String, val emoji: String) {
     SOUTH_AMERICA("South America", "🌎"),
     OCEANIA("Oceania", "🌏"),
     MIDDLE_EAST("Middle East", "🌏")
+}
+
+// ── Archetypes ────────────────────────────────────────────────────────────────
+//
+//  GRINDER       → Slow, steady. Low pressure sensitivity. No big spikes or crashes.
+//  SPRINTER      → Builds streaks fast, breaks hard. High pressure sensitivity.
+//  COMEBACK_KID  → Fails often but recovers faster than anyone. High recovery bonus.
+//  FRAGILE_ELITE → High discipline but psychologically brittle. Cracks under pressure.
+//  UNDERDOG      → Low discipline, but occasionally pulls off surprise winning streaks.
+//  PLATEAUER     → Good early progress, then long flat periods of mediocrity.
+//
+enum class BotArchetype {
+    GRINDER,
+    SPRINTER,
+    COMEBACK_KID,
+    FRAGILE_ELITE,
+    UNDERDOG,
+    PLATEAUER
 }
 
 // ── Name lists (150 per region) ───────────────────────────────────────────────
@@ -161,67 +182,162 @@ fun namesForRegion(region: WarriorRegion): List<String> = when (region) {
     WarriorRegion.MIDDLE_EAST   -> NAMES_MIDDLE_EAST
 }
 
-// ── Bot model ─────────────────────────────────────────────────────────────────
+// ── Bot profile ───────────────────────────────────────────────────────────────
 @Serializable
 data class BotProfile(
-    val id: Int,                    // 0..1049 (region * 150 + index)
+    // Identity
+    val id: Int,
     val name: String,
     val region: String,             // WarriorRegion.name
+    val seed: Long,
+
+    // Core discipline
     val baseDiscipline: Double,     // 0.0–1.0
-    val fatigueFactor: Double,      // how fast fatigue builds
-    val seed: Long,                 // deterministic random seed for calendar generation
+    val fatigueFactor: Double,      // 0.003–0.020
+
+    // Archetype
+    val archetype: String,          // BotArchetype.name (serialization-safe)
+    val pressureSensitivity: Double,// 0.0–1.0: how much long streaks psyche them out
+    val streakThreshold: Int,       // streak length before pressure kicks in
+
+    // Weekly rhythm — personal "weak day" via sin wave
+    val rhythmAmplitude: Double,    // 0.0–0.10: max swing from weekly cycle
+    val rhythmPhaseOffset: Double,  // 0.0–6.28: shifts which day of week is weakest
+
+    // Life events — random disruption windows
+    val lifeEventInterval: Int,     // avg days between disruptions (30–70)
+    val lifeEventSeverity: Double,  // 0.0–1.0: how hard events hit this bot
+
+    // Runtime state
     var points: Int = 0,
     var currentStreak: Int = 0,
     var momentum: Double = 0.0,
     var totalCleanDays: Int = 0,
     var totalFailDays: Int = 0,
+    var inLifeEvent: Boolean = false,
+    var lifeEventDaysLeft: Int = 0,
     var lastSimulatedDay: String = ""
 )
 
-// ── A+ Momentum & Fatigue Algorithm ──────────────────────────────────────────
+// ── Archetype modifiers ───────────────────────────────────────────────────────
 //
-// P(survival) = σ(D) + 0.08·ln(1+M) − 0.35·(1−e^(−F·S)) + R
+// Each archetype adjusts specific parameters at generation time:
 //
-// where:
-//   σ(D)  = 1 / (1 + e^(−10·(D−0.5)))   sigmoid of baseDiscipline
-//            → smooth S-curve: weak bots can't "luck" into elite territory
-//   M     = momentum (0–50)
-//            → logarithmic boost: early momentum matters most, then levels off
-//   F     = fatigueFactor (bot-specific, 0.003–0.020)
-//   S     = currentStreak
-//            → plateau fatigue: hurts early streaks hard, then stabilises
-//   R     = recovery bonus when S=0: 0.05·e^(−0.01·totalFails)
-//            → models real psychology: a reset gives a brief motivation surge
-//              but repeated failures erode even that bounce-back
+//  GRINDER       pressureSensitivity ≈ 0.05  streakThreshold ≈ 40  rhythmAmplitude ≈ 0.02
+//  SPRINTER      pressureSensitivity ≈ 0.70  streakThreshold ≈ 14  rhythmAmplitude ≈ 0.05
+//  COMEBACK_KID  pressureSensitivity ≈ 0.30  streakThreshold ≈ 21  recoveryBonus ×2.0
+//  FRAGILE_ELITE pressureSensitivity ≈ 0.85  streakThreshold ≈ 10  (high discipline only)
+//  UNDERDOG      pressureSensitivity ≈ 0.20  streakThreshold ≈ 30  (low discipline only)
+//  PLATEAUER     pressureSensitivity ≈ 0.15  rhythmAmplitude ≈ 0.08 (flat momentum gain)
 //
-// Clamped to [0.05, 0.98] — no bot is ever certain to clean or fail.
+data class ArchetypeConfig(
+    val pressureSensitivity: Double,
+    val streakThreshold: Int,
+    val rhythmAmplitudeBonus: Double,
+    val recoveryMultiplier: Double,   // multiplied into the recovery bonus
+    val lifeEventSeverityBonus: Double
+)
+
+fun archetypeConfig(archetype: BotArchetype): ArchetypeConfig = when (archetype) {
+    BotArchetype.GRINDER       -> ArchetypeConfig(0.05, 40, 0.00, 1.0, 0.0)
+    BotArchetype.SPRINTER      -> ArchetypeConfig(0.70, 14, 0.03, 0.8, 0.1)
+    BotArchetype.COMEBACK_KID  -> ArchetypeConfig(0.30, 21, 0.02, 2.5, 0.0)
+    BotArchetype.FRAGILE_ELITE -> ArchetypeConfig(0.85, 10, 0.01, 0.6, 0.3)
+    BotArchetype.UNDERDOG      -> ArchetypeConfig(0.20, 30, 0.04, 1.2, 0.1)
+    BotArchetype.PLATEAUER     -> ArchetypeConfig(0.15, 25, 0.08, 0.9, 0.0)
+}
+
+// ── Survival Probability ──────────────────────────────────────────────────────
 //
-fun survivalProbability(bot: BotProfile): Double {
-    // Sigmoid discipline base
+//  P(clean) = clamp(
+//      σ(D)                       ← sigmoid discipline base
+//    + 0.08·ln(1+M)              ← logarithmic momentum boost
+//    − fatigue_term               ← plateau fatigue from long streaks
+//    − pressure_term              ← psychological pressure (archetype-driven)
+//    + rhythm_term                ← weekly sin-wave cycle (personal weak day)
+//    + recovery_term              ← bounce-back after relapse
+//    + life_event_penalty         ← random disruption window
+//  , 0.05, 0.98)
+//
+//  fatigue_term  = 0.35·(1−e^(−F·S))          — same as before
+//  pressure_term = Ps·σ(S−Sₜ)                 — NEW: sigmoid beyond threshold
+//  rhythm_term   = A·sin(2π·dow/7 + φ)        — NEW: weekly cycle
+//  recovery_term = Rm·0.05·e^(−0.01·Tf)       — modified by archetype multiplier
+//  life_event_penalty = severity·0.55          — NEW: active only during event window
+//
+fun survivalProbability(
+    bot: BotProfile,
+    dayOfWeek: Int = 0,           // 0=Mon … 6=Sun
+    lifeEventActive: Boolean = false
+): Double {
+    val archetype = runCatching { BotArchetype.valueOf(bot.archetype) }
+        .getOrDefault(BotArchetype.GRINDER)
+    val cfg = archetypeConfig(archetype)
+
+    // 1. Sigmoid discipline base
     val sigmoidBase = 1.0 / (1.0 + exp(-10.0 * (bot.baseDiscipline - 0.5)))
 
-    // Logarithmic momentum boost
+    // 2. Logarithmic momentum boost
     val momentumBoost = 0.08 * ln(1.0 + bot.momentum)
 
-    // Plateau fatigue penalty — (1 − e^(−F·S)) approaches 1 asymptotically
+    // 3. Plateau fatigue penalty
     val fatiguePenalty = (1.0 - exp(-bot.fatigueFactor * bot.currentStreak)) * 0.35
 
-    // Recovery bonus — fades as total failures accumulate
-    val recoveryBonus = if (bot.currentStreak == 0)
-        0.05 * exp(-bot.totalFailDays * 0.01)
+    // 4. Psychological pressure beyond threshold (archetype-driven)
+    //    σ(S − Sₜ) → 0 when S << Sₜ, rises to 1 when S >> Sₜ
+    val pressureTerm = if (bot.currentStreak > bot.streakThreshold) {
+        val x = (bot.currentStreak - bot.streakThreshold).toDouble()
+        bot.pressureSensitivity * (1.0 / (1.0 + exp(-0.3 * (x - 5.0))))
+    } else 0.0
+
+    // 5. Weekly rhythm — personal weak-day sin wave
+    //    Positive peak = strong day, Negative peak = weak day
+    val rhythmTerm = bot.rhythmAmplitude * sin(
+        2.0 * Math.PI * dayOfWeek / 7.0 + bot.rhythmPhaseOffset
+    )
+
+    // 6. Recovery bonus after relapse (fades with repeated failures)
+    val recoveryTerm = if (bot.currentStreak == 0)
+        cfg.recoveryMultiplier * 0.05 * exp(-bot.totalFailDays * 0.01)
     else 0.0
 
-    val raw = sigmoidBase + momentumBoost - fatiguePenalty + recoveryBonus
+    // 7. Life event penalty (active only during event window)
+    val lifeEventPenalty = if (lifeEventActive)
+        bot.lifeEventSeverity * 0.55
+    else 0.0
+
+    val raw = sigmoidBase + momentumBoost - fatiguePenalty - pressureTerm +
+              rhythmTerm + recoveryTerm - lifeEventPenalty
+
     return raw.coerceIn(0.05, 0.98)
 }
 
-// ── Tier — derived from actual discipline value, not arbitrary ID ─────────────
-// Matches the generation ranges in generateBots() exactly:
-//   Tier 1 Elite       → D ∈ [0.96, 0.99)
-//   Tier 2 Advanced    → D ∈ [0.91, 0.96)
-//   Tier 3 Intermediate→ D ∈ [0.84, 0.91)
-//   Tier 4 Developing  → D ∈ [0.72, 0.84)
-//   Tier 5 Struggling  → D ∈ [0.40, 0.72)
+// ── Points scoring ────────────────────────────────────────────────────────────
+//
+//  Clean day earned:
+//    base       = 2
+//    streakBonus= floor(streak / 7)     (+1 per completed week of streak)
+//    momentumBonus = floor(momentum / 10) (+1 per 10 momentum)
+//
+//  Relapse loss:
+//    base_loss  = 3
+//    streakTax  = floor(streak_before / 5)  (longer streak = bigger fall from grace)
+//    total_loss capped at 12
+//
+fun pointsForCleanDay(streak: Int, momentum: Double): Int {
+    val base         = 2
+    val streakBonus  = floor(streak / 7.0).toInt()
+    val momentumBonus = floor(momentum / 10.0).toInt()
+    return base + streakBonus + momentumBonus
+}
+
+fun pointsLostOnRelapse(streakBefore: Int): Int {
+    val baseLoss   = 3
+    val streakTax  = floor(streakBefore / 5.0).toInt()
+    return minOf(baseLoss + streakTax, 12)
+}
+
+// ── Tier — derived from baseDiscipline ───────────────────────────────────────
 fun tierOf(bot: BotProfile): String = when {
     bot.baseDiscipline >= 0.96 -> "1 — Elite"
     bot.baseDiscipline >= 0.91 -> "2 — Advanced"
@@ -230,58 +346,126 @@ fun tierOf(bot: BotProfile): String = when {
     else                       -> "5 — Struggling"
 }
 
-// ── Bot generation ────────────────────────────────────────────────────────────
+// ── Procedural calendar generation ───────────────────────────────────────────
+fun generateBotCalendar(bot: BotProfile, days: Int = 365): Map<String, Boolean> {
+    val rng       = Random(bot.seed)
+    val result    = LinkedHashMap<String, Boolean>()
+    val startDate = java.time.LocalDate.now().minusDays(days.toLong() - 1)
+    var tempStreak   = 0
+    var tempMomentum = 0.0
+    var lifeEventDaysLeft = 0
+
+    repeat(days) { dayIdx ->
+        val date       = startDate.plusDays(dayIdx.toLong())
+        val key        = date.format(DATE_FORMATTER)
+        val dayOfWeek  = date.dayOfWeek.value - 1  // 0=Mon … 6=Sun
+
+        // Life event logic
+        if (lifeEventDaysLeft > 0) {
+            lifeEventDaysLeft--
+        } else if (dayIdx > 0 && rng.nextInt(bot.lifeEventInterval) == 0) {
+            lifeEventDaysLeft = rng.nextInt(3, 15)
+        }
+        val lifeEventActive = lifeEventDaysLeft > 0
+
+        val tempBot = bot.copy(
+            currentStreak = tempStreak,
+            momentum      = tempMomentum,
+            inLifeEvent   = lifeEventActive,
+            lifeEventDaysLeft = lifeEventDaysLeft
+        )
+        val prob  = survivalProbability(tempBot, dayOfWeek, lifeEventActive)
+        val clean = rng.nextDouble() < prob
+        result[key] = clean
+
+        if (clean) {
+            tempStreak++
+            tempMomentum = min(tempMomentum + 1.0, 50.0)
+        } else {
+            tempStreak   = 0
+            tempMomentum = maxOf(tempMomentum - 3.0, 0.0)
+        }
+    }
+    return result
+}
+
+// ── Bot generation (fully seeded — deterministic) ─────────────────────────────
 fun generateBots(): List<BotProfile> {
-    val bots = mutableListOf<BotProfile>()
+    val bots     = mutableListOf<BotProfile>()
     var globalId = 0
 
+    // Archetype distribution per tier (10 + 20 + 30 + 40 + 50 = 150 per region)
+    // Tier 1 Elite (i < 10):       mostly GRINDER or FRAGILE_ELITE
+    // Tier 2 Advanced (i < 30):    GRINDER, SPRINTER, COMEBACK_KID
+    // Tier 3 Intermediate (i < 60):all archetypes
+    // Tier 4 Developing (i < 100): UNDERDOG, COMEBACK_KID, PLATEAUER, SPRINTER
+    // Tier 5 Struggling (i < 150): UNDERDOG, PLATEAUER, SPRINTER
+
+    val tier1Archetypes  = listOf(BotArchetype.GRINDER, BotArchetype.FRAGILE_ELITE)
+    val tier2Archetypes  = listOf(BotArchetype.GRINDER, BotArchetype.SPRINTER, BotArchetype.COMEBACK_KID)
+    val tier3Archetypes  = BotArchetype.entries.toList()
+    val tier4Archetypes  = listOf(BotArchetype.UNDERDOG, BotArchetype.COMEBACK_KID, BotArchetype.PLATEAUER, BotArchetype.SPRINTER)
+    val tier5Archetypes  = listOf(BotArchetype.UNDERDOG, BotArchetype.PLATEAUER, BotArchetype.SPRINTER)
+
     WarriorRegion.entries.forEachIndexed { rIdx, region ->
+        // Seeded shuffle so names are always the same for a given region
         val names = namesForRegion(region).shuffled(Random(rIdx.toLong() * 7919L))
+
         repeat(150) { i ->
-            val (dBase, fFactor) = when {
-                i < 10  -> Pair(Random.nextDouble(0.96, 0.99), Random.nextDouble(0.003, 0.005))   // Tier 1 Elite
-                i < 30  -> Pair(Random.nextDouble(0.91, 0.96), Random.nextDouble(0.005, 0.008))   // Tier 2
-                i < 60  -> Pair(Random.nextDouble(0.84, 0.91), Random.nextDouble(0.007, 0.011))   // Tier 3
-                i < 100 -> Pair(Random.nextDouble(0.72, 0.84), Random.nextDouble(0.009, 0.014))   // Tier 4
-                else    -> Pair(Random.nextDouble(0.40, 0.72), Random.nextDouble(0.012, 0.020))   // Tier 5 Struggling
+            // Fully seeded RNG per bot — same bot always has same stats
+            val botSeed = (rIdx * 150L + i) * 31337L
+            val rng     = Random(botSeed)
+
+            val (dBase, fFactor, archetypePool) = when {
+                i < 10  -> Triple(
+                    rng.nextDouble(0.96, 0.99),
+                    rng.nextDouble(0.003, 0.005),
+                    tier1Archetypes
+                )
+                i < 30  -> Triple(
+                    rng.nextDouble(0.91, 0.96),
+                    rng.nextDouble(0.005, 0.008),
+                    tier2Archetypes
+                )
+                i < 60  -> Triple(
+                    rng.nextDouble(0.84, 0.91),
+                    rng.nextDouble(0.007, 0.011),
+                    tier3Archetypes
+                )
+                i < 100 -> Triple(
+                    rng.nextDouble(0.72, 0.84),
+                    rng.nextDouble(0.009, 0.014),
+                    tier4Archetypes
+                )
+                else    -> Triple(
+                    rng.nextDouble(0.40, 0.72),
+                    rng.nextDouble(0.012, 0.020),
+                    tier5Archetypes
+                )
             }
+
+            val archetype = archetypePool[rng.nextInt(archetypePool.size)]
+            val cfg       = archetypeConfig(archetype)
+
             bots.add(
                 BotProfile(
-                    id             = globalId++,
-                    name           = names.getOrElse(i) { "Warrior${globalId}" },
-                    region         = region.name,
-                    baseDiscipline = dBase,
-                    fatigueFactor  = fFactor,
-                    seed           = (rIdx * 150L + i) * 31337L
+                    id                   = globalId++,
+                    name                 = names.getOrElse(i) { "Warrior${globalId}" },
+                    region               = region.name,
+                    seed                 = botSeed,
+                    baseDiscipline       = dBase,
+                    fatigueFactor        = fFactor,
+                    archetype            = archetype.name,
+                    pressureSensitivity  = cfg.pressureSensitivity +
+                                          rng.nextDouble(-0.05, 0.05).coerceIn(-cfg.pressureSensitivity, 0.2),
+                    streakThreshold      = cfg.streakThreshold + rng.nextInt(-3, 4),
+                    rhythmAmplitude      = rng.nextDouble(0.01, 0.06) + cfg.rhythmAmplitudeBonus,
+                    rhythmPhaseOffset    = rng.nextDouble(0.0, 2.0 * Math.PI),
+                    lifeEventInterval    = rng.nextInt(30, 71),
+                    lifeEventSeverity    = rng.nextDouble(0.2, 0.7) + cfg.lifeEventSeverityBonus
                 )
             )
         }
     }
     return bots
-}
-
-// ── Procedural calendar generation (never stored, generated on demand) ────────
-fun generateBotCalendar(bot: BotProfile, days: Int = 365): Map<String, Boolean> {
-    val rng = Random(bot.seed)
-    val result = LinkedHashMap<String, Boolean>()
-    val startDate = java.time.LocalDate.now().minusDays(days.toLong() - 1)
-    var tempStreak = 0
-    var tempMomentum = 0.0
-
-    repeat(days) { dayIdx ->
-        val date    = startDate.plusDays(dayIdx.toLong())
-        val key     = date.format(DATE_FORMATTER)
-        val tempBot = bot.copy(currentStreak = tempStreak, momentum = tempMomentum)
-        val prob    = survivalProbability(tempBot)
-        val clean   = rng.nextDouble() < prob
-        result[key] = clean
-        if (clean) {
-            tempStreak++
-            tempMomentum = min(tempMomentum + 1.0, 30.0)
-        } else {
-            tempStreak = 0
-            tempMomentum = max(tempMomentum - 3.0, 0.0)
-        }
-    }
-    return result
 }
