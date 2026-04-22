@@ -5,6 +5,40 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// ── [FIX BUG 7] Version sourced from CI environment ──────────────────────────
+//
+// Previously versionCode and versionName were hardcoded constants. If a developer
+// pushed a new GitHub release tag (e.g. "v2.3.0") but forgot to update this file,
+// the uploaded APK would still report "2.2.0" and the isNewer() check would never
+// trigger for existing users — they'd never see the update dialog.
+//
+// Fix: Read VERSION_NAME and VERSION_CODE from environment variables set by CI.
+// The GitHub Actions workflow sets these from the git tag before building.
+//
+// Local development fallback: if the env vars are absent (e.g. IDE sync, debug
+// build on a dev machine), the hardcoded defaults below are used so nothing breaks.
+//
+// How to use in CI (.github/workflows/build.yml):
+//   - name: Build Release APK
+//     env:
+//       VERSION_NAME: ${{ github.ref_name }}          # e.g. "v2.3.0"
+//       VERSION_CODE: ${{ github.run_number }}         # auto-increments each run
+//       KEY_STORE_PATH: warrior-release.jks
+//       KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+//       KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+//       KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+//     run: ./gradlew assembleRelease --no-daemon
+// ─────────────────────────────────────────────────────────────────────────────
+
+val ciVersionName = System.getenv("VERSION_NAME")
+    ?.removePrefix("v")   // strip leading "v" from git tags like "v2.3.0"
+    ?.trim()
+    ?: "2.3.0"            // local fallback — bump this when releasing manually
+
+val ciVersionCode = System.getenv("VERSION_CODE")
+    ?.toIntOrNull()
+    ?: 5                  // local fallback — keep ahead of last published versionCode
+
 android {
     namespace = "com.tanay.warrior2026"
     compileSdk = 35
@@ -13,8 +47,8 @@ android {
         applicationId = "com.tanay.warrior2026"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "2.2.0"
+        versionCode = ciVersionCode
+        versionName = ciVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
