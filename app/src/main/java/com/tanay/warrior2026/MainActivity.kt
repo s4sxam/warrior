@@ -3,6 +3,8 @@ package com.tanay.warrior2026
 // [UPDATE] v2.0.0: Added Commander Profile flow, Leaderboard tab, bot state wiring
 // [UPDATE] v2.1.0: Added in-app update checker dialog
 // [UPDATE] v2.2.0: Update dialog now uses DownloadManager — no browser open
+// [FIX]    v2.3.0: Removed onTestUpdate parameter from WarriorApp and AboutScreen.
+//                  Auto-check on launch is the only update trigger — no manual button.
 
 import android.content.Intent
 import android.Manifest
@@ -165,23 +167,22 @@ class MainActivity : ComponentActivity() {
                                         WarriorViewModel.DownloadPhase.DOWNLOADING -> {
                                             val fraction = updateState.progressFraction
                                             if (fraction < 0f) {
-                                                // Total size unknown — indeterminate
                                                 LinearProgressIndicator(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    color    = WarriorRed,
+                                                    modifier   = Modifier.fillMaxWidth(),
+                                                    color      = WarriorRed,
                                                     trackColor = Color(0xFF3A0000)
                                                 )
                                             } else {
                                                 LinearProgressIndicator(
-                                                    progress = { fraction },
-                                                    modifier  = Modifier.fillMaxWidth(),
-                                                    color     = WarriorRed,
+                                                    progress   = { fraction },
+                                                    modifier   = Modifier.fillMaxWidth(),
+                                                    color      = WarriorRed,
                                                     trackColor = Color(0xFF3A0000)
                                                 )
                                             }
                                             Spacer(modifier = Modifier.height(8.dp))
                                             val mbDone  = updateState.progressBytes / 1_048_576f
-                                            val mbTotal = updateState.totalBytes  / 1_048_576f
+                                            val mbTotal = updateState.totalBytes / 1_048_576f
                                             val label = if (updateState.totalBytes > 0)
                                                 "%.1f / %.1f MB".format(mbDone, mbTotal)
                                             else
@@ -254,7 +255,6 @@ class MainActivity : ComponentActivity() {
                             onClearConfetti = { viewModel.clearConfetti() },
                             onExport        = { viewModel.exportJson() },
                             onImport        = { json -> viewModel.importJson(json) },
-                            onTestUpdate    = { viewModel.checkForUpdate("1.0.0") },
                             trollMessages   = viewModel.trollMessages,
                             regionalBoard   = regionalBoard,
                             globalBoard     = globalBoard,
@@ -277,7 +277,6 @@ fun WarriorApp(
     onClearConfetti: () -> Unit,
     onExport: () -> String,
     onImport: (String) -> Boolean,
-    onTestUpdate: () -> Unit,
     trollMessages: List<String>,
     regionalBoard: List<com.tanay.warrior2026.data.BotSimulator.LeaderboardEntry>,
     globalBoard: List<com.tanay.warrior2026.data.BotSimulator.LeaderboardEntry>,
@@ -321,7 +320,6 @@ fun WarriorApp(
                         Text("WARRIOR 2026", fontSize = 22.sp,
                             fontWeight = FontWeight.Black, color = WarriorRed)
                     }
-
                 }
 
                 AnimatedContent(
@@ -349,9 +347,8 @@ fun WarriorApp(
                         ViewState.ANALYSIS -> AnalysisScreen(state = state)
                         ViewState.ARCHIVE  -> ArchiveScreen(state = state)
                         ViewState.ABOUT    -> AboutScreen(
-                            onExport     = onExport,
-                            onImport     = onImport,
-                            onTestUpdate = onTestUpdate
+                            onExport = onExport,
+                            onImport = onImport
                         )
                     }
                 }
