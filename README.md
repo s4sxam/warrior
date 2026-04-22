@@ -13,7 +13,7 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?style=flat-square&logo=kotlin&logoColor=white)](https://kotlinlang.org)
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack_Compose-4285F4?style=flat-square&logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
 [![Android 8+](https://img.shields.io/badge/Android_8%2B-3DDC84?style=flat-square&logo=android&logoColor=white)](https://developer.android.com)
-[![No Internet](https://img.shields.io/badge/No_Internet_Required-CC0000?style=flat-square)](#)
+[![Internet for updates only](https://img.shields.io/badge/Internet-Updates_Only-CC0000?style=flat-square)](#)
 [![MIT License](https://img.shields.io/badge/License-MIT-222222?style=flat-square)](LICENSE)
 
 <br/>
@@ -76,7 +76,9 @@ The notification system doesn't fire at 2 AM. The relapse modal has a troll mess
 
 ## Built clean, built private
 
-Warrior 2026 has **no internet permission** in its manifest. There is no server. There is no API call. Your history is saved using Jetpack DataStore on your own phone and nowhere else.
+Your streak history, triggers, and profile are saved using Jetpack DataStore **on your own phone only** — no server, no account, no cloud.
+
+The only time the app uses the internet is when checking for a new version on launch. It makes one read-only request to the GitHub Releases API. No data is sent. If there's no connection, the check silently skips.
 
 The architecture is standard Android MVVM:
 
@@ -89,6 +91,32 @@ Your Actions  →  ViewModel  →  Repository  →  DataStore (on-device)
 Streaks are computed live from raw history — not stored as a number that can drift. Notifications use `AlarmManager` with exact timing and a `BootReceiver` so they survive phone restarts. The release APK runs R8 minification and resource shrinking to keep it lean.
 
 You can **Export** your full history as a JSON file and **Import** it back anytime — useful when switching phones or just keeping a personal backup.
+
+<br/>
+
+---
+
+## In-app updates
+
+Starting from v2.2.0, Warrior 2026 checks for new versions automatically on launch and prompts you to download and install directly inside the app — no browser, no manual APK hunting.
+
+**How it works:**
+1. On launch, the app silently checks the latest GitHub Release
+2. If a newer version exists and you haven't already dismissed it, a dialog appears
+3. Tap **Download Update** — the APK downloads via Android's DownloadManager with a progress bar
+4. Tap **Install Now** when the download completes — the system installer takes over
+
+**What it remembers:**
+- If you tap **Later**, the dialog won't appear again for that version — only when a genuinely newer version ships
+- If you tap **Install Now**, the dialog won't reappear even if you cancel the system installer
+
+**v2.3.0 update system fixes:**
+- Dismiss is now persisted across app restarts — tapping "Later" actually sticks
+- Retry button now properly re-downloads instead of just resetting the UI
+- App no longer re-prompts for a version you already dismissed or installed
+- Orphaned background downloads are cleaned up on the next launch
+- Debug test button is now hidden in release builds
+- APK version always matches the GitHub release tag (no more version drift)
 
 <br/>
 
@@ -113,8 +141,8 @@ The roadmap stays lean. Every feature added has to earn its place.
 ## Why trust this?
 
 - **Open source** — every line of code is here. Read it. Audit it. Fork it.
-- **No internet** — verify it yourself with any network monitor
 - **No account** — there's nothing to leak because nothing is collected
+- **Internet only for updates** — one read-only GitHub API call on launch, nothing sent
 - **MIT license** — you own your build. Do whatever you want with it.
 - **Built by a real user** — made by a developer who runs this on his own phone daily
 
