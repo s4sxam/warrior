@@ -3,7 +3,8 @@ package com.tanay.warrior2026
 // [UPDATE] v2.0.0: Added profile setup, bot simulation, leaderboard state
 // [UPDATE] v2.1.0: Added update checker
 // [UPDATE] v2.2.0: In-app DownloadManager download + install trigger
-// [FIX]    v2.3.0: Fixed all update system bugs:
+// [FIX]    v2.3.0: Fixed all update system bugs (see below)
+// [UPDATE] v3.0.0: Pass userStreak to leaderboard calls for dynamic scoring
 //   - BUG 1: dismissUpdate() now persists dismissed version to DataStore
 //   - BUG 2: retryDownload() now properly re-enqueues a new download
 //   - BUG 3: checkForUpdate() skips dialog if latest == already-dismissed version
@@ -201,7 +202,8 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
                 userName        = s.userProfile.name,
                 userPoints      = s.userPoints,
                 userTotalClean  = s.totalClean,
-                userTotalLogged = s.totalClean + s.totalFailed
+                userTotalLogged = s.totalClean + s.totalFailed,
+                userStreak      = s.streak
             )
         }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
@@ -213,7 +215,8 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
                 userPoints      = s.userPoints,
                 userRegion      = s.userProfile.region,
                 userTotalClean  = s.totalClean,
-                userTotalLogged = s.totalClean + s.totalFailed
+                userTotalLogged = s.totalClean + s.totalFailed,
+                userStreak      = s.streak
             )
         }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
