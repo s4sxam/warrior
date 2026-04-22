@@ -30,11 +30,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.tanay.warrior2026.data.BotArchetype
 import com.tanay.warrior2026.data.BotProfile
 import com.tanay.warrior2026.data.BotSimulator
 import com.tanay.warrior2026.data.DATE_FORMATTER
 import com.tanay.warrior2026.data.WarriorRegion
 import com.tanay.warrior2026.data.generateBotCalendar
+import com.tanay.warrior2026.data.tierOf
 import com.tanay.warrior2026.ui.theme.*
 import java.time.LocalDate
 
@@ -210,11 +212,21 @@ private fun LeaderboardRow(entry: BotSimulator.LeaderboardEntry, onClick: () -> 
                 maxLines   = 1
             )
             if (!entry.isUser) {
-                Text(
-                    "${entry.winRate.toInt()}% win rate",
-                    fontSize = 10.sp,
-                    color    = TextDim
-                )
+                val archetypeShort = when (entry.archetype) {
+                    BotArchetype.GRINDER.name       -> "Grinder"
+                    BotArchetype.SPRINTER.name      -> "Sprinter"
+                    BotArchetype.COMEBACK_KID.name  -> "Comeback Kid"
+                    BotArchetype.FRAGILE_ELITE.name -> "Fragile Elite"
+                    BotArchetype.UNDERDOG.name      -> "Underdog"
+                    BotArchetype.PLATEAUER.name     -> "Plateauer"
+                    else                            -> ""
+                }
+                val sub = buildString {
+                    append("${entry.winRate.toInt()}% win")
+                    if (entry.currentStreak > 0) append(" · 🔥${entry.currentStreak}d")
+                    if (archetypeShort.isNotBlank()) append(" · $archetypeShort")
+                }
+                Text(sub, fontSize = 10.sp, color = TextDim, maxLines = 1)
             } else {
                 Text("YOU", fontSize = 10.sp, color = WarriorRed,
                     fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
@@ -323,11 +335,32 @@ fun BotProfileDialog(bot: BotProfile, onDismiss: () -> Unit) {
                             regionDisplayName(bot.region),
                             fontSize = 12.sp, color = TextTertiary
                         )
-                        Text(
-                            "Tier ${tierOf(bot)}",
-                            fontSize = 11.sp, color = WarriorRed,
-                            fontWeight = FontWeight.Bold, letterSpacing = 1.sp
-                        )
+                        Spacer(Modifier.height(4.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            // Tier badge
+                            Text(
+                                "Tier ${tierOf(bot)}",
+                                fontSize = 11.sp, color = WarriorRed,
+                                fontWeight = FontWeight.Bold, letterSpacing = 1.sp
+                            )
+                            Text("•", fontSize = 11.sp, color = TextDim)
+                            // Archetype badge
+                            val archetypeLabel = when (
+                                runCatching { BotArchetype.valueOf(bot.archetype) }.getOrDefault(BotArchetype.GRINDER)
+                            ) {
+                                BotArchetype.GRINDER       -> "⚙️ Grinder"
+                                BotArchetype.SPRINTER      -> "⚡ Sprinter"
+                                BotArchetype.COMEBACK_KID  -> "🔄 Comeback Kid"
+                                BotArchetype.FRAGILE_ELITE -> "💎 Fragile Elite"
+                                BotArchetype.UNDERDOG      -> "🐉 Underdog"
+                                BotArchetype.PLATEAUER     -> "📉 Plateauer"
+                            }
+                            Text(
+                                archetypeLabel,
+                                fontSize = 11.sp, color = Gold,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
 
@@ -338,9 +371,9 @@ fun BotProfileDialog(bot: BotProfile, onDismiss: () -> Unit) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    StatCard("POINTS",       "${bot.points}",       Gold,         Modifier.weight(1f))
-                    StatCard("WIN RATE",     "$winRate%",           VictoryGreen, Modifier.weight(1f))
-                    StatCard("STREAK",       "${bot.currentStreak}","days", TextSecondary, Modifier.weight(1f))
+                    StatCard("POINTS",   "${bot.points}",        Gold,         Modifier.weight(1f))
+                    StatCard("WIN RATE", "$winRate%",            VictoryGreen, Modifier.weight(1f))
+                    StatCard("STREAK",   "${bot.currentStreak} days", TextSecondary, Modifier.weight(1f))
                 }
 
                 Spacer(Modifier.height(16.dp))
@@ -389,29 +422,7 @@ private fun StatCard(
     }
 }
 
-// Overload for appending unit label
-@Composable
-private fun StatCard(
-    label: String, value: String, unit: String,
-    unitColor: Color,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(CardBlack)
-            .border(1.dp, BorderColor, RoundedCornerShape(14.dp))
-            .padding(12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(value, fontSize = 20.sp, fontWeight = FontWeight.Black, color = TextPrimary)
-            Spacer(Modifier.width(3.dp))
-            Text(unit, fontSize = 10.sp, color = unitColor, modifier = Modifier.padding(bottom = 2.dp))
-        }
-        Text(label, fontSize = 9.sp, color = TextDim, letterSpacing = 1.sp, fontWeight = FontWeight.Bold)
-    }
-}
+// StatCard — single overload, value and label only
 
 @Composable
 private fun BotCalendarHeatmap(calendar: Map<String, Boolean>) {
@@ -486,13 +497,4 @@ private fun LegendDot(color: Color, label: String) {
 private fun regionDisplayName(regionName: String): String =
     WarriorRegion.entries.find { it.name == regionName }?.displayName ?: regionName
 
-private fun tierOf(bot: BotProfile): String {
-    val rank = bot.id % 150
-    return when {
-        rank < 10  -> "1 — Elite"
-        rank < 30  -> "2 — Advanced"
-        rank < 60  -> "3 — Intermediate"
-        rank < 100 -> "4 — Developing"
-        else       -> "5 — Struggling"
-    }
-}
+// tierOf() is imported from BotData.kt — uses baseDiscipline (correct)
