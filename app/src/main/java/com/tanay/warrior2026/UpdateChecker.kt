@@ -1,6 +1,8 @@
 package com.tanay.warrior2026
 
 // [UPDATE] v2.2.0: Replaced browser-open with DownloadManager in-app download
+// [FIX]    v2.3.0: Added cancelDownload() helper so orphaned DownloadManager jobs
+//                  can be cleaned up when the app is killed mid-download and relaunches.
 
 import android.app.DownloadManager
 import android.content.Context
@@ -29,7 +31,7 @@ object UpdateChecker {
             val json = URL(GITHUB_API).readText()
             val obj = JSONObject(json)
 
-            val latestTag = obj.getString("tag_name").removePrefix("v")
+            val latestTag = obj.getString("tag_name").removePrefix("v").trim()
 
             val assets = obj.getJSONArray("assets")
             var apkUrl = ""
@@ -82,6 +84,16 @@ object UpdateChecker {
         return dm.enqueue(request)
     }
 
+    // ── Cancel and remove a DownloadManager job ───────────────────────────────
+    // [FIX v2.3.0] Called on app relaunch if a downloadId was persisted but the
+    // download never completed — prevents orphaned background downloads accumulating.
+
+    fun cancelDownload(context: Context, downloadId: Long) {
+        if (downloadId == -1L) return
+        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        dm.remove(downloadId)
+    }
+
     // ── Poll DownloadManager for current status/progress ─────────────────────
 
     data class DownloadProgress(
@@ -114,11 +126,13 @@ object UpdateChecker {
         return DownloadProgress(status, downloaded, total, localUri)
     }
 
-    // ── Version comparison (unchanged) ────────────────────────────────────────
+    // ── Version comparison ────────────────────────────────────────────────────
+    // [FIX v2.3.0] Added tag sanitisation — strips anything after a '-' so
+    // "2.3.0-beta" and "2.3.0-rc1" don't break the numeric comparison.
 
-    private fun isNewer(latest: String, current: String): Boolean {
-        val l = latest.split(".").map { it.toIntOrNull() ?: 0 }
-        val c = current.split(".").map { it.toIntOrNull() ?: 0 }
+    fun isNewer(latest: String, current: String): Boolean {
+        val l = latest.substringBefore("-").split(".").map { it.toIntOrNull() ?: 0 }
+        val c = current.substringBefore("-").split(".").map { it.toIntOrNull() ?: 0 }
         for (i in 0 until maxOf(l.size, c.size)) {
             val lv = l.getOrElse(i) { 0 }
             val cv = c.getOrElse(i) { 0 }
