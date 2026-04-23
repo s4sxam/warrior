@@ -35,7 +35,6 @@ import com.tanay.warrior2026.data.BotProfile
 import com.tanay.warrior2026.data.BotSimulator
 import com.tanay.warrior2026.data.DATE_FORMATTER
 import com.tanay.warrior2026.data.WarriorRegion
-import com.tanay.warrior2026.data.generateBotCalendar
 import com.tanay.warrior2026.data.tierOf
 import com.tanay.warrior2026.ui.theme.*
 import java.time.LocalDate
@@ -270,7 +269,9 @@ private fun TabButton(label: String, selected: Boolean, onClick: () -> Unit) {
 @Composable
 fun BotProfileDialog(bot: BotProfile, onDismiss: () -> Unit) {
     // Generate calendar on demand (procedural, never stored)
-    val calendar = remember(bot.id) { generateBotCalendar(bot, 365) }
+    // [FIX v3.1.0] Use real simulated calendar — only days actually simulated are
+    // shown. Days before simulation start appear grey. No more fake procedural data.
+    val calendar = remember(bot.id) { BotSimulator.realSimulatedCalendar(bot) }
     val total    = (bot.totalCleanDays + bot.totalFailDays).coerceAtLeast(1)
     val winRate  = (bot.totalCleanDays.toFloat() / total * 100f).toInt()
 
@@ -425,7 +426,7 @@ private fun StatCard(
 // StatCard — single overload, value and label only
 
 @Composable
-private fun BotCalendarHeatmap(calendar: Map<String, Boolean>) {
+private fun BotCalendarHeatmap(calendar: Map<String, Boolean?>) {
     val today    = LocalDate.now()
     val start    = today.minusDays(364)
     val dayOfWeek = start.dayOfWeek.value % 7  // 0=Sun offset
@@ -466,7 +467,7 @@ private fun BotCalendarHeatmap(calendar: Map<String, Boolean>) {
                                         when (value) {
                                             true  -> VictoryGreen.copy(alpha = 0.85f)
                                             false -> WarriorRed.copy(alpha = 0.75f)
-                                            null  -> Color(0xFF111111)
+                                            null  -> Color(0xFF111111) // not yet simulated or padding
                                         }
                                     )
                             )
@@ -481,6 +482,7 @@ private fun BotCalendarHeatmap(calendar: Map<String, Boolean>) {
             ) {
                 LegendDot(VictoryGreen, "Clean")
                 LegendDot(WarriorRed,   "Relapse")
+                LegendDot(Color(0xFF333333), "Not yet")
             }
         }
     }
