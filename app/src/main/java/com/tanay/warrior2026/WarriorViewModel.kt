@@ -162,6 +162,9 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         _isGeneratingBots.value = true
         viewModelScope.launch(Dispatchers.Default) {
             val profile  = UserProfile(name = name, dob = dob, region = region)
+            // [FIX v3.1.0] generateBots() returns all 1050 bots (7 regions × 150).
+            // _bots must hold ALL of them so globalLeaderboard() can rank across
+            // all regions. regionalLeaderboard() filters internally.
             val newBots  = BotSimulator.advanceSimulation(com.tanay.warrior2026.data.generateBots())
             val botsJson = BotSimulator.saveBots(newBots)
             val new = _state.value.copy(
@@ -171,7 +174,7 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
             )
             withContext(Dispatchers.Main) {
                 _state.value = new
-                _bots.value  = newBots
+                _bots.value  = newBots   // all 1050 stored
                 _isGeneratingBots.value = false
             }
             repo.saveState(new)
@@ -268,6 +271,18 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
 
     fun importJson(json: String): Boolean {
         val merged = repo.importJson(_state.value, json) ?: return false
+        _state.value = merged
+        viewModelScope.launch { repo.saveState(merged) }
+        return true
+    }
+
+    fun importPlain(entries: Map<com.tanay.warrior2026.data.DayData, String>): Boolean = false // unused overload
+
+    fun importPlainDays(days: Map<String, com.tanay.warrior2026.data.DayData>): Boolean {
+        if (days.isEmpty()) return false
+        val merged = _state.value.copy(
+            history = _state.value.history + days
+        )
         _state.value = merged
         viewModelScope.launch { repo.saveState(merged) }
         return true
