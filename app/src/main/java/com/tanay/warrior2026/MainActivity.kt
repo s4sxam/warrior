@@ -255,6 +255,7 @@ class MainActivity : ComponentActivity() {
                             onClearConfetti = { viewModel.clearConfetti() },
                             onExport        = { viewModel.exportJson() },
                             onImport        = { json -> viewModel.importJson(json) },
+                            onImportPlain   = { days -> viewModel.importPlainDays(days) },
                             trollMessages   = viewModel.trollMessages,
                             regionalBoard   = regionalBoard,
                             globalBoard     = globalBoard,
@@ -277,6 +278,7 @@ fun WarriorApp(
     onClearConfetti: () -> Unit,
     onExport: () -> String,
     onImport: (String) -> Boolean,
+    onImportPlain: (Map<String, com.tanay.warrior2026.data.DayData>) -> Boolean,
     trollMessages: List<String>,
     regionalBoard: List<com.tanay.warrior2026.data.BotSimulator.LeaderboardEntry>,
     globalBoard: List<com.tanay.warrior2026.data.BotSimulator.LeaderboardEntry>,
@@ -347,8 +349,9 @@ fun WarriorApp(
                         ViewState.ANALYSIS -> AnalysisScreen(state = state)
                         ViewState.ARCHIVE  -> ArchiveScreen(state = state)
                         ViewState.ABOUT    -> AboutScreen(
-                            onExport = onExport,
-                            onImport = onImport
+                            onExport      = onExport,
+                            onImport      = onImport,
+                            onImportPlain = onImportPlain
                         )
                     }
                 }
