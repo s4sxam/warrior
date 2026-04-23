@@ -4,6 +4,10 @@ package com.tanay.warrior2026.data
 // [FIX]    v3.1.0: Start date now 365 days ago (not hardcoded 2026-04-12).
 //                  realSimulatedCalendar() replaces generateBotCalendar() —
 //                  only days that were actually simulated are returned (no fake history).
+// [FIX]    v3.2.0: advanceSimulation() and realSimulatedCalendar() now respect
+//                  BotProfile.simulationStartDate (= app install date). Bots will
+//                  never show data before the day the user first installed the app.
+//                  Legacy bots (simulationStartDate blank) get no retroactive data.
 
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -28,8 +32,10 @@ object BotSimulator {
 
     /**
      * Advance every bot from lastSimulatedDay up to yesterday.
-     * [FIX v3.1.0] Fallback start is now LocalDate.now().minusDays(365) — no
-     * more hardcoded date. New installs always get a full year of history.
+     * [FIX v3.2.0] Uses simulationStartDate as the earliest allowed start.
+     * If the bot has no lastSimulatedDay, simulation starts from simulationStartDate
+     * (the day the app was installed), NOT 365 days ago. This prevents bots from
+     * showing a full year of history on a freshly installed app.
      */
     fun advanceSimulation(bots: List<BotProfile>): List<BotProfile> {
         val yesterday = LocalDate.now().minusDays(1)
@@ -37,12 +43,26 @@ object BotSimulator {
         return bots.map { bot ->
             var b = bot
 
-            val startDate: LocalDate = if (b.lastSimulatedDay.isBlank()) {
-                LocalDate.now().minusDays(365)
+            // The earliest date we are allowed to simulate from.
+            // For new bots this is simulationStartDate (= app install date).
+            // For legacy bots with no simulationStartDate, fall back to today
+            // so they don't retroactively fabricate a year of history.
+            val simulationFloor: LocalDate = if (b.simulationStartDate.isBlank()) {
+                LocalDate.now() // legacy bots: start from today, build forward
             } else {
                 runCatching {
+                    LocalDate.parse(b.simulationStartDate, DATE_FORMATTER)
+                }.getOrElse { LocalDate.now() }
+            }
+
+            val startDate: LocalDate = if (b.lastSimulatedDay.isBlank()) {
+                simulationFloor
+            } else {
+                val nextDay = runCatching {
                     LocalDate.parse(b.lastSimulatedDay, DATE_FORMATTER).plusDays(1)
                 }.getOrElse { yesterday }
+                // Never go before the floor even on resume
+                if (nextDay.isBefore(simulationFloor)) simulationFloor else nextDay
             }
 
             if (startDate.isAfter(yesterday)) return@map b
@@ -121,7 +141,17 @@ object BotSimulator {
             LocalDate.parse(bot.lastSimulatedDay, DATE_FORMATTER)
         }.getOrElse { return result }
 
-        val simStart = gridStart // replay from grid start (same as advanceSimulation fallback)
+        // [FIX v3.2.0] Only replay from simulationStartDate — never before the app
+        // was installed. Days before simulationStartDate stay null (grey in heatmap).
+        val installDate: LocalDate = if (bot.simulationStartDate.isBlank()) {
+            today // legacy bot: treat all pre-existing cells as null
+        } else {
+            runCatching {
+                LocalDate.parse(bot.simulationStartDate, DATE_FORMATTER)
+            }.getOrElse { today }
+        }
+        // simStart is the later of gridStart and installDate
+        val simStart = if (installDate.isAfter(gridStart)) installDate else gridStart
 
         val lifeRng = Random(bot.seed xor simStart.toEpochDay() xor 0xCAFEBABEL)
         var tempStreak = 0
