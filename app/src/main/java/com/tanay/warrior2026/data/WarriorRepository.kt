@@ -5,6 +5,9 @@ package com.tanay.warrior2026.data
 //                    - DISMISSED_VERSION: the latest version the user said "Later" to
 //                    - PENDING_DOWNLOAD_ID: downloadId surviving process death
 //                  Both allow the update system to remember state across restarts.
+// [NEW]    v3.2.0: Added FIRST_RUN_DATE key — stored once on first profile completion.
+//                  Used to stamp every bot's simulationStartDate so the 365-day
+//                  heatmap only shows real data from app install day onwards.
 
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -33,6 +36,8 @@ class WarriorRepository(private val context: Context) {
         // v2.3.0 update persistence
         val DISMISSED_VERSION   = stringPreferencesKey("w_dismissed_version_v8")
         val PENDING_DOWNLOAD_ID = longPreferencesKey("w_pending_download_id_v8")
+        // v3.2.0 first-run date
+        val FIRST_RUN_DATE      = stringPreferencesKey("w_first_run_date_v8")
     }
 
     val warriorStateFlow: Flow<WarriorState> = context.dataStore.data.map { prefs ->
@@ -94,6 +99,25 @@ class WarriorRepository(private val context: Context) {
     suspend fun clearPendingDownloadId() {
         context.dataStore.edit { prefs ->
             prefs.remove(Keys.PENDING_DOWNLOAD_ID)
+        }
+    }
+
+    // ── v3.2.0: First-run date ────────────────────────────────────────────────
+
+    /**
+     * Returns the persisted first-run date string (ISO_LOCAL_DATE), or "" if not set.
+     * This is the date the user completed their profile for the first time.
+     */
+    suspend fun getFirstRunDate(): String =
+        context.dataStore.data.first()[Keys.FIRST_RUN_DATE] ?: ""
+
+    /**
+     * Saves the first-run date. Only called once — on first profile completion.
+     * Subsequent calls are no-ops (checked in ViewModel).
+     */
+    suspend fun saveFirstRunDate(date: String) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.FIRST_RUN_DATE] = date
         }
     }
 
