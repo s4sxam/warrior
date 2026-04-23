@@ -5,6 +5,15 @@ package com.tanay.warrior2026
 // [UPDATE] v2.2.0: In-app DownloadManager download + install trigger
 // [FIX]    v2.3.0: Fixed all update system bugs (see below)
 // [UPDATE] v3.0.0: Pass userStreak to leaderboard calls for dynamic scoring
+// [FIX]    v3.2.0: Fixed race condition in advanceBotsIfNeeded() that could wipe
+//                  a logVictory() or logRelapse() if bot simulation finished after
+//                  the user logged their day. The state copy now always happens on
+//                  Main thread AFTER the background work completes, reading the
+//                  latest _state.value to avoid overwriting concurrent changes.
+// [NEW]    v3.2.0: completeProfile() stamps every bot with simulationStartDate = today
+//                  (first-run date). This prevents bots from showing a full fake year
+//                  of history on a fresh install. The 365-day heatmap only shows real
+//                  data from the app install date forward.
 //   - BUG 1: dismissUpdate() now persists dismissed version to DataStore
 //   - BUG 2: retryDownload() now properly re-enqueues a new download
 //   - BUG 3: checkForUpdate() skips dialog if latest == already-dismissed version
@@ -162,10 +171,25 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         _isGeneratingBots.value = true
         viewModelScope.launch(Dispatchers.Default) {
             val profile  = UserProfile(name = name, dob = dob, region = region)
+
+            // [NEW v3.2.0] Stamp every bot with today as their simulationStartDate.
+            // This is the app install date — bots will only have data from this day
+            // forward. The 365-day heatmap will show grey for all days before today.
+            val todayStr = com.tanay.warrior2026.data.todayKey()
+            val savedFirstRun = repo.getFirstRunDate()
+            val firstRunDate  = if (savedFirstRun.isBlank()) {
+                repo.saveFirstRunDate(todayStr)
+                todayStr
+            } else {
+                savedFirstRun
+            }
+
             // [FIX v3.1.0] generateBots() returns all 1050 bots (7 regions × 150).
-            // _bots must hold ALL of them so globalLeaderboard() can rank across
-            // all regions. regionalLeaderboard() filters internally.
-            val newBots  = BotSimulator.advanceSimulation(com.tanay.warrior2026.data.generateBots())
+            // [NEW v3.2.0] Each bot gets simulationStartDate = firstRunDate so their
+            // history only covers time since the app was actually installed.
+            val rawBots  = com.tanay.warrior2026.data.generateBots()
+                .map { it.copy(simulationStartDate = firstRunDate) }
+            val newBots  = BotSimulator.advanceSimulation(rawBots)
             val botsJson = BotSimulator.saveBots(newBots)
             val new = _state.value.copy(
                 userProfile         = profile,
@@ -188,9 +212,17 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
             val newJson  = BotSimulator.saveBots(advanced)
             withContext(Dispatchers.Main) { _bots.value = advanced }
             if (newJson != botsJson) {
-                val new = _state.value.copy(botsJson = newJson)
-                _state.value = new
-                repo.saveState(new)
+                // [FIX v3.2.0] Race condition: bot simulation runs on Dispatchers.Default
+                // and can take time. If logVictory() or logRelapse() fires during that window,
+                // doing _state.value = _state.value.copy(botsJson = newJson) here would
+                // snapshot the current _state correctly (since we're now on Main), but we must
+                // re-read _state.value AFTER switching to Main — not capture it before the
+                // withContext call — to guarantee we include any victories logged in between.
+                withContext(Dispatchers.Main) {
+                    val new = _state.value.copy(botsJson = newJson)
+                    _state.value = new
+                    repo.saveState(new)
+                }
             }
         }
     }
