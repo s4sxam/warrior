@@ -216,7 +216,12 @@ data class BotProfile(
     var totalFailDays: Int = 0,
     var inLifeEvent: Boolean = false,
     var lifeEventDaysLeft: Int = 0,
-    var lastSimulatedDay: String = ""
+    var lastSimulatedDay: String = "",
+
+    // [NEW v3.2.0] The date bots were first generated (= app install date).
+    // Simulation and heatmap never show data before this date.
+    // Format: ISO_LOCAL_DATE. Blank on legacy bots = no restriction.
+    val simulationStartDate: String = ""
 )
 
 // ── Archetype modifiers ───────────────────────────────────────────────────────
