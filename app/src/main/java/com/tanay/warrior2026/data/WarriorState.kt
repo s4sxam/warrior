@@ -65,6 +65,8 @@ data class WarriorState(
 
     // Dynamic points matching bot scoring: +2 base + floor(streak/7) + floor(momentum/10)
     // Replays clean days chronologically so scoring matches bots exactly.
+    // Bots score with currentStreak BEFORE incrementing (see BotSimulator.kt line 67-71),
+    // so user scoring must do the same: score first, then increment streak.
     val userPoints: Int get() {
         var total = 0
         var streak = 0
