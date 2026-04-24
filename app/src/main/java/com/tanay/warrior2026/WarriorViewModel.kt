@@ -35,6 +35,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import androidx.core.content.FileProvider
+import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tanay.warrior2026.data.BotProfile
@@ -162,7 +163,16 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
     // ── Onboarding / Profile / Bots (unchanged) ───────────────────────────────
 
     fun completeOnboarding() {
-        val new = _state.value.copy(hasCompletedOnboarding = true)
+        // Ensure a default habit exists on first run
+        val habits = if (_state.value.habits.isEmpty()) {
+            listOf(com.tanay.warrior2026.data.Habit(
+                id = "habit_primary", name = "Main Habit", emoji = "🔥"))
+        } else _state.value.habits
+        val new = _state.value.copy(
+            hasCompletedOnboarding = true,
+            habits = habits,
+            activeHabitId = habits.first().id
+        )
         _state.value = new
         viewModelScope.launch { repo.saveState(new) }
     }
@@ -257,17 +267,20 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
 
     fun getBotProfile(botId: Int): BotProfile? = _bots.value.find { it.id == botId }
 
-    // ── Existing actions (unchanged) ──────────────────────────────────────────
+    // ── Existing actions (updated for multi-habit) ────────────────────────────
 
     fun logVictory() {
         val today = todayKey()
-        if (_state.value.history.containsKey(today)) return
-        val new = _state.value.copy(
-            history = _state.value.history + (today to DayData(status = "clean"))
-        )
+        val active = _state.value.activeHabit ?: return
+        if (active.history.containsKey(today)) return
+        val updated = active.copy(history = active.history + (today to DayData(status = "clean")))
+        val new = _state.value.withUpdatedHabit(updated)
         _state.value = new
         _showConfetti.value = true
-        viewModelScope.launch { repo.saveState(new) }
+        viewModelScope.launch {
+            repo.saveState(new)
+            com.tanay.warrior2026.widget.StreakWidget().updateAll(getApplication())
+        }
         vibrate(longArrayOf(0, 100, 50, 100))
         val milestones = setOf(3, 7, 14, 21, 30, 60, 90, 180, 365)
         if (new.streak in milestones) WarriorScheduler.fireMilestoneNow(getApplication(), new.streak)
@@ -277,22 +290,67 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         val domain = if (url.isBlank() || url == "unknown") "unknown"
                      else extractDomain(url)
         val today  = todayKey()
-        val newTriggers = _state.value.triggers.toMutableMap()
+        val active = _state.value.activeHabit ?: return false
+        val newTriggers = active.triggers.toMutableMap()
         if (domain != "unknown") newTriggers[domain] = (newTriggers[domain] ?: 0) + 1
-        val new = _state.value.copy(
-            history  = _state.value.history + (today to DayData(status = "failed", site = domain)),
+        val updated = active.copy(
+            history  = active.history + (today to DayData(status = "failed", site = domain)),
             triggers = newTriggers
         )
+        val new = _state.value.withUpdatedHabit(updated)
         _state.value = new
-        viewModelScope.launch { repo.saveState(new) }
+        viewModelScope.launch {
+            repo.saveState(new)
+            com.tanay.warrior2026.widget.StreakWidget().updateAll(getApplication())
+        }
         vibrate(longArrayOf(0, 500))
         true
     }.getOrDefault(false)
 
     fun undoToday() {
         val today = todayKey()
-        if (!_state.value.history.containsKey(today)) return
-        val new = _state.value.copy(history = _state.value.history - today)
+        val active = _state.value.activeHabit ?: return
+        if (!active.history.containsKey(today)) return
+        val updated = active.copy(history = active.history - today)
+        val new = _state.value.withUpdatedHabit(updated)
+        _state.value = new
+        viewModelScope.launch { repo.saveState(new) }
+    }
+
+    // ── v4.0.0: Multi-habit management ───────────────────────────────────────
+
+    fun addHabit(name: String, emoji: String) {
+        val id = "habit_${System.currentTimeMillis()}"
+        val habit = com.tanay.warrior2026.data.Habit(id = id, name = name, emoji = emoji)
+        val new = _state.value.copy(
+            habits       = _state.value.habits + habit,
+            activeHabitId = id
+        )
+        _state.value = new
+        viewModelScope.launch { repo.saveState(new) }
+    }
+
+    fun deleteHabit(habitId: String) {
+        if (_state.value.habits.size <= 1) return // don't delete last habit
+        val remaining = _state.value.habits.filter { it.id != habitId }
+        val newActive = if (_state.value.activeHabitId == habitId) remaining.first().id
+                        else _state.value.activeHabitId
+        val new = _state.value.copy(habits = remaining, activeHabitId = newActive)
+        _state.value = new
+        viewModelScope.launch { repo.saveState(new) }
+    }
+
+    fun switchHabit(habitId: String) {
+        if (!_state.value.habits.any { it.id == habitId }) return
+        val new = _state.value.copy(activeHabitId = habitId)
+        _state.value = new
+        viewModelScope.launch { repo.saveState(new) }
+    }
+
+    fun renameHabit(habitId: String, name: String, emoji: String) {
+        val habit = _state.value.habits.find { it.id == habitId } ?: return
+        val updated = habit.copy(name = name, emoji = emoji)
+        val new = _state.value.withUpdatedHabit(updated)
         _state.value = new
         viewModelScope.launch { repo.saveState(new) }
     }
@@ -312,9 +370,9 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
 
     fun importPlainDays(days: Map<String, com.tanay.warrior2026.data.DayData>): Boolean {
         if (days.isEmpty()) return false
-        val merged = _state.value.copy(
-            history = _state.value.history + days
-        )
+        val active = _state.value.activeHabit ?: return false
+        val updated = active.copy(history = active.history + days)
+        val merged = _state.value.withUpdatedHabit(updated)
         _state.value = merged
         viewModelScope.launch { repo.saveState(merged) }
         return true
@@ -498,6 +556,9 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         val host = android.net.Uri.parse(withScheme).host ?: throw IllegalArgumentException("bad url")
         return host.removePrefix("www.")
     }
+
+    private fun WarriorState.withUpdatedHabit(habit: com.tanay.warrior2026.data.Habit): WarriorState =
+        copy(habits = habits.map { if (it.id == habit.id) habit else it })
 
     private fun vibrate(pattern: LongArray) {
         try {
