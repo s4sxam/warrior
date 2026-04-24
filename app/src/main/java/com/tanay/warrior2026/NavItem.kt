@@ -12,5 +12,6 @@ val navItems = listOf(
     NavItem(ViewState.LEADERBOARD, "Arena",     Icons.Filled.EmojiEvents),
     NavItem(ViewState.ANALYSIS,    "Analysis",  Icons.Filled.BarChart),
     NavItem(ViewState.ARCHIVE,     "Archives",  Icons.Filled.CalendarMonth),
+    NavItem(ViewState.HABITS,      "Habits",    Icons.Filled.List),
     NavItem(ViewState.ABOUT,       "Code",      Icons.Filled.Shield),
 )
