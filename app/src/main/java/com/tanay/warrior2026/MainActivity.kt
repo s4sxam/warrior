@@ -249,6 +249,7 @@ class MainActivity : ComponentActivity() {
 
                         WarriorApp(
                             state           = state,
+                            vm              = viewModel,
                             showConfetti    = showConfetti,
                             onLogVictory    = { viewModel.logVictory() },
                             onLogRelapse    = { url -> viewModel.logRelapse(url) },
@@ -272,6 +273,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun WarriorApp(
     state: com.tanay.warrior2026.data.WarriorState,
+    vm: WarriorViewModel,
     showConfetti: Boolean,
     onLogVictory: () -> Unit,
     onLogRelapse: (String) -> Boolean,
