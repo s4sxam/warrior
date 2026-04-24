@@ -61,6 +61,19 @@
         <receiver android:name=".notifications.RandomMotivationReceiver" android:exported="false" />
         <receiver android:name=".notifications.MilestoneReceiver" android:exported="false" />
 
+        <!-- v4.0.0: Home screen streak widget -->
+        <receiver
+            android:name=".widget.StreakWidgetReceiver"
+            android:exported="true"
+            android:label="Warrior Streak">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/streak_widget_info" />
+        </receiver>
+
     </application>
 
 </manifest>
