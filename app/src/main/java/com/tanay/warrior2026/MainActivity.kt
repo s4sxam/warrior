@@ -348,6 +348,7 @@ fun WarriorApp(
                         )
                         ViewState.ANALYSIS -> AnalysisScreen(state = state)
                         ViewState.ARCHIVE  -> ArchiveScreen(state = state)
+                        ViewState.HABITS   -> HabitsScreen(state = state, vm = viewModel)
                         ViewState.ABOUT    -> AboutScreen(
                             onExport      = onExport,
                             onImport      = onImport,
