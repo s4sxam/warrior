@@ -49,9 +49,48 @@ The **Analysis** screen shows 6 months of your history as a bar chart, a consist
 
 The **Archive** screen is a full calendar heatmap — every day you've ever logged, green or red. Scroll back months. See your patterns.
 
+The **Habits** screen lets you create and manage multiple habits. Each one has its own streak, history, archive, and stats. Switch between them with one tap.
+
 Notifications push you three times a day — morning, afternoon, evening — with messages that actually have teeth. Milestone alerts fire automatically at Day 3, 7, 14, 21, 30, 60, 90, 180, and 365.
 
 The **Leaderboard** puts you against 1,050 simulated competitors across 7 world regions. They aren't bots — they behave like real people struggling with the same thing you are. See below for how this works.
+
+<br/>
+
+---
+
+## Multi-Habit Support
+
+Starting from v4.0.0, you can track more than one habit at a time.
+
+Each habit is fully independent — its own streak, history, relapse triggers, archive heatmap, and analysis. The **Habits** screen lets you:
+
+- **Add** a new habit with a name and emoji icon
+- **Switch** between habits with one tap — the active habit drives the War Room, Analysis, and Archive screens
+- **Rename** or re-emoji any habit at any time
+- **Delete** a habit (with confirmation) — all its history goes with it
+
+The Leaderboard and bot simulation are always tied to your **primary habit** (the first one you created) for consistency.
+
+**Existing users are migrated automatically** — your old single habit becomes "Main Habit 🔥" on first launch. Nothing is lost.
+
+<br/>
+
+---
+
+## Home Screen Widget
+
+Starting from v4.0.0, you can add a **Streak Widget** to your home screen — see your streak without opening the app.
+
+The widget shows:
+- Your active habit's emoji and name
+- Your **current streak** in large red type
+- Whether **today has been logged** yet
+- Your **all-time best streak**
+
+Tapping the widget opens the app directly. The widget refreshes automatically every 30 minutes and updates instantly whenever you log a Victory or Relapse.
+
+**To add the widget:** long-press your home screen → Widgets → search "Warrior" → drag to your screen.
 
 <br/>
 
@@ -155,6 +194,8 @@ Most habit apps are built to keep you opening the app. Warrior 2026 is built to 
 | Notification spam | 3 timed pushes + random motivation 9 AM–10 PM only |
 | Vague history | Full calendar heatmap + trigger domain tracking |
 | No competition | 1,050 simulated human-like rivals across 7 regions |
+| Single habit only | Track as many habits as you want |
+| No widget | Home screen streak widget — no app open needed |
 
 The notification system doesn't fire at 2 AM. The relapse modal has a troll message. The streak ring counts up from zero every launch so you *feel* how many days you've built. These are intentional decisions, not accidents.
 
@@ -174,6 +215,8 @@ The architecture is standard Android MVVM:
 Your Actions  →  ViewModel  →  Repository  →  DataStore (on-device)
                      ↓
                StateFlow  →  Compose UI  (re-renders only what changed)
+                                  ↓
+                           Glance Widget  (home screen, updates on log)
 ```
 
 Streaks are computed live from raw history — not stored as a number that can drift. Notifications use `AlarmManager` with exact timing and a `BootReceiver` so they survive phone restarts. The release APK runs R8 minification and resource shrinking to keep it lean.
@@ -214,13 +257,14 @@ Starting from v2.2.0, Warrior 2026 checks for new versions automatically on laun
 
 The core loop is done and solid. Here's what's next:
 
-- **Home screen widget** — see your streak without opening the app
-- **Multi-habit support** — track more than one thing at a time
+- ~~**Home screen widget** — see your streak without opening the app~~ ✅ *shipped in v4.0.0*
+- ~~**Multi-habit support** — track more than one thing at a time~~ ✅ *shipped in v4.0.0*
 - **Custom milestone days** — set your own targets beyond the defaults
 - **Biometric lock** — fingerprint protection for your history
 - **Richer charts** — win-rate trend line over the 6-month view
 - **Leaderboard streaks** — show bot streak history on their profile
 - **Region switching** — change your region after onboarding
+- **Per-habit leaderboard** — separate competition for each habit you track
 
 The roadmap stays lean. Every feature added has to earn its place.
 
@@ -279,5 +323,6 @@ Issues, ideas, and PRs are open. If you fix a bug or build something from the ro
 
 `android` `kotlin` `jetpack-compose` `streak-tracker` `habit-tracker` `self-improvement`
 `discipline` `productivity` `material3` `mvvm` `offline` `privacy-first` `open-source` `no-ads`
+`multi-habit` `home-screen-widget` `glance`
 
 </div>
