@@ -8,6 +8,9 @@ package com.tanay.warrior2026.data
 // [NEW]    v3.2.0: Added FIRST_RUN_DATE key — stored once on first profile completion.
 //                  Used to stamp every bot's simulationStartDate so the 365-day
 //                  heatmap only shows real data from app install day onwards.
+// [NEW]    v4.0.0: Multi-habit support — HABITS_JSON replaces HISTORY + TRIGGERS.
+//                  ACTIVE_HABIT_ID tracks the currently-selected habit.
+//                  Legacy HISTORY / TRIGGERS keys are read once for migration.
 
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -26,8 +29,8 @@ private val Context.dataStore by preferencesDataStore(name = "warrior_prefs_v8")
 class WarriorRepository(private val context: Context) {
 
     private object Keys {
-        val HISTORY             = stringPreferencesKey("w_history_v8")
-        val TRIGGERS            = stringPreferencesKey("w_triggers_v8")
+        val HISTORY             = stringPreferencesKey("w_history_v8")       // legacy — migration only
+        val TRIGGERS            = stringPreferencesKey("w_triggers_v8")      // legacy — migration only
         val ONBOARDING          = booleanPreferencesKey("w_onboarding_v8")
         // v2.0.0
         val USER_PROFILE        = stringPreferencesKey("w_profile_v8")
@@ -38,32 +41,49 @@ class WarriorRepository(private val context: Context) {
         val PENDING_DOWNLOAD_ID = longPreferencesKey("w_pending_download_id_v8")
         // v3.2.0 first-run date
         val FIRST_RUN_DATE      = stringPreferencesKey("w_first_run_date_v8")
+        // v4.0.0 multi-habit
+        val HABITS_JSON         = stringPreferencesKey("w_habits_v9")
+        val ACTIVE_HABIT_ID     = stringPreferencesKey("w_active_habit_v9")
     }
 
     val warriorStateFlow: Flow<WarriorState> = context.dataStore.data.map { prefs ->
-        val history: Map<String, DayData> = runCatching {
-            Json.decodeFromString<Map<String, DayData>>(prefs[Keys.HISTORY] ?: "{}")
-        }.getOrDefault(emptyMap())
-
-        val triggers: Map<String, Int> = runCatching {
-            Json.decodeFromString<Map<String, Int>>(prefs[Keys.TRIGGERS] ?: "{}")
-        }.getOrDefault(emptyMap())
-
         val onboarded       = prefs[Keys.ONBOARDING] ?: false
         val profileDone     = prefs[Keys.PROFILE_COMPLETE] ?: false
         val botsJson        = prefs[Keys.BOTS_JSON] ?: ""
+        val activeHabitId   = prefs[Keys.ACTIVE_HABIT_ID] ?: ""
 
         val userProfile: UserProfile = runCatching {
             Json.decodeFromString<UserProfile>(prefs[Keys.USER_PROFILE] ?: "{}")
         }.getOrDefault(UserProfile())
 
-        WarriorState(history, triggers, onboarded, userProfile, profileDone, botsJson)
+        // v4.0.0: read new habits list, or migrate from legacy single-habit keys
+        val habits: List<Habit> = runCatching {
+            val json = prefs[Keys.HABITS_JSON]
+            if (!json.isNullOrBlank()) {
+                Json.decodeFromString<List<Habit>>(json)
+            } else {
+                // Migration path: wrap old history/triggers into a default habit
+                val oldHistory: Map<String, DayData> = runCatching {
+                    Json.decodeFromString<Map<String, DayData>>(prefs[Keys.HISTORY] ?: "{}")
+                }.getOrDefault(emptyMap())
+                val oldTriggers: Map<String, Int> = runCatching {
+                    Json.decodeFromString<Map<String, Int>>(prefs[Keys.TRIGGERS] ?: "{}")
+                }.getOrDefault(emptyMap())
+                listOf(Habit(id = "habit_primary", name = "Main Habit", emoji = "🔥",
+                    history = oldHistory, triggers = oldTriggers))
+            }
+        }.getOrDefault(listOf(Habit(id = "habit_primary", name = "Main Habit", emoji = "🔥")))
+
+        val resolvedActiveId = if (habits.any { it.id == activeHabitId }) activeHabitId
+                               else habits.firstOrNull()?.id ?: ""
+
+        WarriorState(habits, resolvedActiveId, onboarded, userProfile, profileDone, botsJson)
     }
 
     suspend fun saveState(state: WarriorState) {
         context.dataStore.edit { prefs ->
-            prefs[Keys.HISTORY]          = Json.encodeToString(state.history)
-            prefs[Keys.TRIGGERS]         = Json.encodeToString(state.triggers)
+            prefs[Keys.HABITS_JSON]      = Json.encodeToString(state.habits)
+            prefs[Keys.ACTIVE_HABIT_ID]  = state.activeHabitId
             prefs[Keys.ONBOARDING]       = state.hasCompletedOnboarding
             prefs[Keys.USER_PROFILE]     = Json.encodeToString(state.userProfile)
             prefs[Keys.PROFILE_COMPLETE] = state.hasCompletedProfile
@@ -127,6 +147,8 @@ class WarriorRepository(private val context: Context) {
 
     fun importJson(existing: WarriorState, json: String): WarriorState? = runCatching {
         val imported: Map<String, DayData> = Json.decodeFromString(json)
-        existing.copy(history = existing.history + imported)
+        val activeHabit = existing.activeHabit ?: return null
+        val updatedHabit = activeHabit.copy(history = activeHabit.history + imported)
+        existing.copy(habits = existing.habits.map { if (it.id == updatedHabit.id) updatedHabit else it })
     }.getOrNull()
 }
