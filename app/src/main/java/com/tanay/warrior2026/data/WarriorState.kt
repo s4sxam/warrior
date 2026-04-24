@@ -5,6 +5,10 @@ package com.tanay.warrior2026.data
 //                  A+ rank thresholds — statistically justified (μ±σ model)
 // [UPDATE] v3.0.0: userPoints now uses dynamic per-day scoring matching BotData:
 //                  +2 base + streak bonus + momentum bonus per clean day
+// [NEW]    v4.0.0: Multi-habit support — each habit has its own history, triggers,
+//                  and streak. activeHabitId selects which habit is shown.
+//                  The leaderboard and bot simulation are always tied to the
+//                  primary (first) habit for compatibility.
 
 import kotlinx.serialization.Serializable
 import java.time.LocalDate
@@ -28,14 +32,14 @@ data class UserProfile(
     val region: String = ""         // WarriorRegion.name
 )
 
-data class WarriorState(
+// ── v4.0.0: Habit ─────────────────────────────────────────────────────────────
+@Serializable
+data class Habit(
+    val id: String,                              // UUID string
+    val name: String,                            // e.g. "No Porn", "No Smoking"
+    val emoji: String        = "🔥",             // display icon
     val history: Map<String, DayData> = emptyMap(),
-    val triggers: Map<String, Int>    = emptyMap(),
-    val hasCompletedOnboarding: Boolean = false,
-    // v2.0.0 additions
-    val userProfile: UserProfile      = UserProfile(),
-    val hasCompletedProfile: Boolean  = false,
-    val botsJson: String              = ""  // serialized List<BotProfile>
+    val triggers: Map<String, Int>    = emptyMap()
 ) {
     val streak: Int get() {
         var count = 0
@@ -63,11 +67,7 @@ data class WarriorState(
 
     fun isTodayLogged(): Boolean = history.containsKey(todayKey())
 
-    // Dynamic points matching bot scoring: +2 base + floor(streak/7) + floor(momentum/10)
-    // Replays clean days chronologically so scoring matches bots exactly.
-    // Bots score with currentStreak BEFORE incrementing (see BotSimulator.kt line 67-71),
-    // so user scoring must do the same: score first, then increment streak.
-    val userPoints: Int get() {
+    val points: Int get() {
         var total = 0
         var streak = 0
         var momentum = 0.0
@@ -87,4 +87,31 @@ data class WarriorState(
     }
 }
 
-enum class ViewState { DASHBOARD, ANALYSIS, ARCHIVE, ABOUT, LEADERBOARD }
+data class WarriorState(
+    val habits: List<Habit>           = emptyList(),
+    val activeHabitId: String         = "",
+    val hasCompletedOnboarding: Boolean = false,
+    // v2.0.0 additions
+    val userProfile: UserProfile      = UserProfile(),
+    val hasCompletedProfile: Boolean  = false,
+    val botsJson: String              = ""  // serialized List<BotProfile>
+) {
+    // ── Convenience accessors — delegate to the active habit ──────────────────
+    val activeHabit: Habit? get() = habits.find { it.id == activeHabitId } ?: habits.firstOrNull()
+
+    val history:  Map<String, DayData> get() = activeHabit?.history  ?: emptyMap()
+    val triggers: Map<String, Int>     get() = activeHabit?.triggers ?: emptyMap()
+
+    val streak:      Int get() = activeHabit?.streak      ?: 0
+    val bestStreak:  Int get() = activeHabit?.bestStreak  ?: 0
+    val totalClean:  Int get() = activeHabit?.totalClean  ?: 0
+    val totalFailed: Int get() = activeHabit?.totalFailed ?: 0
+    val userPoints:  Int get() = activeHabit?.points      ?: 0
+
+    fun isTodayLogged(): Boolean = activeHabit?.isTodayLogged() ?: false
+
+    // Legacy helpers kept for bot/leaderboard compatibility (uses primary habit)
+    val primaryHabit: Habit? get() = habits.firstOrNull()
+}
+
+enum class ViewState { DASHBOARD, ANALYSIS, ARCHIVE, ABOUT, LEADERBOARD, HABITS }
