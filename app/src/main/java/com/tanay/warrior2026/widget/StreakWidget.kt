@@ -8,12 +8,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.glance.*
+import androidx.glance.GlanceId
+import androidx.glance.GlanceModifier
 import androidx.glance.action.actionStartActivity
+import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.provideContent
+import androidx.glance.background
 import androidx.glance.layout.*
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
@@ -60,11 +62,10 @@ private fun WidgetContent(
     bestStreak:  Int,
     todayLogged: Boolean
 ) {
-    val Red      = ColorProvider(Color(0xFFCC0000))
-    val White    = ColorProvider(Color(0xFFEEEEEE))
-    val Muted    = ColorProvider(Color(0xFF888888))
-    val Green    = ColorProvider(Color(0xFF2ECC71))
-    val DarkBg   = ColorProvider(Color(0xFF0D0D0D))
+    val Red    = androidx.glance.unit.ColorProvider(Color(0xFFCC0000))
+    val White  = androidx.glance.unit.ColorProvider(Color(0xFFEEEEEE))
+    val Muted  = androidx.glance.unit.ColorProvider(Color(0xFF888888))
+    val Green  = androidx.glance.unit.ColorProvider(Color(0xFF2ECC71))
 
     Box(
         modifier = GlanceModifier
