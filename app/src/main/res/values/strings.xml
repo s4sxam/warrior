@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Themes are handled fully in Jetpack Compose code. -->
+    <!-- v4.0.0: Widget -->
+    <string name="widget_description">Shows your current habit streak on the home screen.</string>
 </resources>
