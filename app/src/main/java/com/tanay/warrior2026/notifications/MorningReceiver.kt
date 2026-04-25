@@ -1,10 +1,10 @@
-package com.tanay.warrior2026.notifications
+package com.tanay.warrior.notifications
 
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import com.tanay.warrior2026.notifications.NotificationMessages
-import com.tanay.warrior2026.notifications.WarriorNotificationManager
+import com.tanay.warrior.notifications.NotificationMessages
+import com.tanay.warrior.notifications.WarriorNotificationManager
 
 class MorningReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
