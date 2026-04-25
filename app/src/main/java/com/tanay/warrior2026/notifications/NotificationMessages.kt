@@ -1,7 +1,7 @@
-package com.tanay.warrior2026.notifications
+package com.tanay.warrior.notifications
 
 /**
- * All notification messages for Warrior 2026.
+ * All notification messages for Warrior.
  * Each entry is a Pair(title, body).
  * Kept in a large pool so repeats are rare.
  */
