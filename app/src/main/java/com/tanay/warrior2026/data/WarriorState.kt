@@ -1,4 +1,4 @@
-package com.tanay.warrior2026.data
+package com.tanay.warrior.data
 
 // [UPDATE] v2.0.0: Added UserProfile, botsJson field, LEADERBOARD to ViewState
 // [UPDATE] v2.2.0: A+ userPoints — logarithmic streak multiplier
