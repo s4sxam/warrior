@@ -1,4 +1,4 @@
-package com.tanay.warrior2026.ui.theme
+package com.tanay.warrior.ui.theme
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
