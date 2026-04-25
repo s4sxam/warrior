@@ -1,9 +1,9 @@
-package com.tanay.warrior2026
+package com.tanay.warrior
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.graphics.vector.ImageVector
-import com.tanay.warrior2026.data.ViewState
+import com.tanay.warrior.data.ViewState
 
 data class NavItem(val view: ViewState, val label: String, val icon: ImageVector)
 
