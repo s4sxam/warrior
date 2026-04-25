@@ -1,4 +1,4 @@
-package com.tanay.warrior2026
+package com.tanay.warrior
 
 // [UPDATE] v2.2.0: Replaced browser-open with DownloadManager in-app download
 // [FIX]    v2.3.0: Added cancelDownload() helper so orphaned DownloadManager jobs
@@ -65,7 +65,7 @@ object UpdateChecker {
         val fileName = "warrior-$versionName.apk"
 
         val request = DownloadManager.Request(Uri.parse(url)).apply {
-            setTitle("Warrior 2026 Update")
+            setTitle("Warrior Update")
             setDescription("Downloading v$versionName...")
             setNotificationVisibility(
                 DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
