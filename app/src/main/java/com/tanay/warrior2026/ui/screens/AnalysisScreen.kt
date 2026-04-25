@@ -1,4 +1,4 @@
-package com.tanay.warrior2026.ui.screens
+package com.tanay.warrior.ui.screens
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
@@ -20,8 +20,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tanay.warrior2026.data.WarriorState
-import com.tanay.warrior2026.ui.theme.*
+import com.tanay.warrior.data.WarriorState
+import com.tanay.warrior.ui.theme.*
 import java.time.LocalDate
 import java.time.Month
 import java.time.format.DateTimeFormatter
