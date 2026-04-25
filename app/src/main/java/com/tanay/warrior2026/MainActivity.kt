@@ -1,4 +1,4 @@
-package com.tanay.warrior2026
+package com.tanay.warrior
 
 // [UPDATE] v2.0.0: Added Commander Profile flow, Leaderboard tab, bot state wiring
 // [UPDATE] v2.1.0: Added in-app update checker dialog
@@ -48,9 +48,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.tanay.warrior2026.data.ViewState
-import com.tanay.warrior2026.ui.screens.*
-import com.tanay.warrior2026.ui.theme.*
+import com.tanay.warrior.data.ViewState
+import com.tanay.warrior.ui.screens.*
+import com.tanay.warrior.ui.theme.*
 import kotlin.math.abs
 
 class MainActivity : ComponentActivity() {
@@ -272,7 +272,7 @@ class MainActivity : ComponentActivity() {
 // ── Root App ───────────────────────────────────────────────────────────────────
 @Composable
 fun WarriorApp(
-    state: com.tanay.warrior2026.data.WarriorState,
+    state: com.tanay.warrior.data.WarriorState,
     vm: WarriorViewModel,
     showConfetti: Boolean,
     onLogVictory: () -> Unit,
@@ -280,11 +280,11 @@ fun WarriorApp(
     onClearConfetti: () -> Unit,
     onExport: () -> String,
     onImport: (String) -> Boolean,
-    onImportPlain: (Map<String, com.tanay.warrior2026.data.DayData>) -> Boolean,
+    onImportPlain: (Map<String, com.tanay.warrior.data.DayData>) -> Boolean,
     trollMessages: List<String>,
-    regionalBoard: List<com.tanay.warrior2026.data.BotSimulator.LeaderboardEntry>,
-    globalBoard: List<com.tanay.warrior2026.data.BotSimulator.LeaderboardEntry>,
-    getBotProfile: (Int) -> com.tanay.warrior2026.data.BotProfile?
+    regionalBoard: List<com.tanay.warrior.data.BotSimulator.LeaderboardEntry>,
+    globalBoard: List<com.tanay.warrior.data.BotSimulator.LeaderboardEntry>,
+    getBotProfile: (Int) -> com.tanay.warrior.data.BotProfile?
 ) {
     var currentView      by remember { mutableStateOf(ViewState.DASHBOARD) }
     var showRelapseModal by remember { mutableStateOf(false) }
