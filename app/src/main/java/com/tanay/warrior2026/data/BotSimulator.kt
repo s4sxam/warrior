@@ -1,4 +1,4 @@
-package com.tanay.warrior2026.data
+package com.tanay.warrior.data
 
 // [UPDATE] v3.0.0: Human-behaviour simulation rewrite
 // [FIX]    v3.1.0: Start date now 365 days ago (not hardcoded 2026-04-12).
