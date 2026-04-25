@@ -1,4 +1,4 @@
-package com.tanay.warrior2026.ui.screens
+package com.tanay.warrior.ui.screens
 
 // ── [NEW] LeaderboardScreen.kt ────────────────────────────────────────────────
 // The Phantom Leaderboard — regional + global tabs, live bot profiles
@@ -30,13 +30,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.tanay.warrior2026.data.BotArchetype
-import com.tanay.warrior2026.data.BotProfile
-import com.tanay.warrior2026.data.BotSimulator
-import com.tanay.warrior2026.data.DATE_FORMATTER
-import com.tanay.warrior2026.data.WarriorRegion
-import com.tanay.warrior2026.data.tierOf
-import com.tanay.warrior2026.ui.theme.*
+import com.tanay.warrior.data.BotArchetype
+import com.tanay.warrior.data.BotProfile
+import com.tanay.warrior.data.BotSimulator
+import com.tanay.warrior.data.DATE_FORMATTER
+import com.tanay.warrior.data.WarriorRegion
+import com.tanay.warrior.data.tierOf
+import com.tanay.warrior.ui.theme.*
 import java.time.LocalDate
 
 @Composable
