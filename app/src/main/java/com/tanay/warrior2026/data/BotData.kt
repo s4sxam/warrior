@@ -1,4 +1,4 @@
-package com.tanay.warrior2026.data
+package com.tanay.warrior.data
 
 // [UPDATE] v3.0.0: Full human-behaviour simulation rewrite
 //   - BotArchetype: 6 personality types with unique probability modifiers
