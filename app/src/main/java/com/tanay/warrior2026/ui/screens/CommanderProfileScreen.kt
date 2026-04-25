@@ -1,4 +1,4 @@
-package com.tanay.warrior2026.ui.screens
+package com.tanay.warrior.ui.screens
 
 // ── [NEW] CommanderProfileScreen.kt ──────────────────────────────────────────
 // The "Commander Profile" setup flow: Name → DOB → Region → Fake Sync
@@ -28,8 +28,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tanay.warrior2026.data.WarriorRegion
-import com.tanay.warrior2026.ui.theme.*
+import com.tanay.warrior.data.WarriorRegion
+import com.tanay.warrior.ui.theme.*
 import kotlinx.coroutines.delay
 
 @Composable
