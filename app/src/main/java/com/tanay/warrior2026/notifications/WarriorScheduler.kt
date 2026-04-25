@@ -1,4 +1,4 @@
-package com.tanay.warrior2026.notifications
+package com.tanay.warrior.notifications
 
 import android.app.AlarmManager
 import android.app.PendingIntent
