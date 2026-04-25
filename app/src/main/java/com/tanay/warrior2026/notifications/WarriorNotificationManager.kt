@@ -1,4 +1,4 @@
-package com.tanay.warrior2026.notifications
+package com.tanay.warrior.notifications
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -8,8 +8,8 @@ import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import com.tanay.warrior2026.MainActivity
-import com.tanay.warrior2026.R
+import com.tanay.warrior.MainActivity
+import com.tanay.warrior.R
 
 object WarriorNotificationManager {
 
