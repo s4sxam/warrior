@@ -1,8 +1,8 @@
-package com.tanay.warrior2026
+package com.tanay.warrior
 
 import android.app.Application
-import com.tanay.warrior2026.notifications.WarriorNotificationManager
-import com.tanay.warrior2026.notifications.WarriorScheduler
+import com.tanay.warrior.notifications.WarriorNotificationManager
+import com.tanay.warrior.notifications.WarriorScheduler
 
 class WarriorApp : Application() {
     override fun onCreate() {
