@@ -1,4 +1,4 @@
-package com.tanay.warrior2026.data
+package com.tanay.warrior.data
 
 // [UPDATE] v2.0.0: Added profile, hasCompletedProfile, botsJson persistence
 // [FIX]    v2.3.0: Added update-preference keys:
