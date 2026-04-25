@@ -1,4 +1,4 @@
-package com.tanay.warrior2026.widget
+package com.tanay.warrior.widget
 
 // [NEW] v4.0.0: Home screen widget — shows active habit name, current streak,
 //               and a tap-to-open action. Built with Jetpack Glance.
@@ -21,10 +21,10 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
-import com.tanay.warrior2026.MainActivity
-import com.tanay.warrior2026.data.DayData
-import com.tanay.warrior2026.data.Habit
-import com.tanay.warrior2026.data.WarriorRepository
+import com.tanay.warrior.MainActivity
+import com.tanay.warrior.data.DayData
+import com.tanay.warrior.data.Habit
+import com.tanay.warrior.data.WarriorRepository
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import java.time.LocalDate
