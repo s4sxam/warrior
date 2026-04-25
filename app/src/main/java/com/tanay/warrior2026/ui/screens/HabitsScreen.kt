@@ -1,4 +1,4 @@
-package com.tanay.warrior2026.ui.screens
+package com.tanay.warrior.ui.screens
 
 // [NEW] v4.0.0: Multi-habit management screen.
 // Shows all habits as cards; lets the user add, switch, rename, and delete habits.
@@ -24,9 +24,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tanay.warrior2026.WarriorViewModel
-import com.tanay.warrior2026.data.Habit
-import com.tanay.warrior2026.data.WarriorState
+import com.tanay.warrior.WarriorViewModel
+import com.tanay.warrior.data.Habit
+import com.tanay.warrior.data.WarriorState
 
 private val Red       = Color(0xFFCC0000)
 private val DarkBg    = Color(0xFF0D0D0D)
