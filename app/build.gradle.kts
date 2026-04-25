@@ -40,11 +40,11 @@ val ciVersionCode = System.getenv("VERSION_CODE")
     ?: 5                  // local fallback — keep ahead of last published versionCode
 
 android {
-    namespace = "com.tanay.warrior2026"
+    namespace = "com.tanay.warrior"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.tanay.warrior2026"
+        applicationId = "com.tanay.warrior"
         minSdk = 26
         targetSdk = 35
         versionCode = ciVersionCode
