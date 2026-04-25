@@ -1,4 +1,4 @@
-package com.tanay.warrior2026
+package com.tanay.warrior
 
 // [UPDATE] v2.0.0: Added profile setup, bot simulation, leaderboard state
 // [UPDATE] v2.1.0: Added update checker
@@ -38,14 +38,14 @@ import androidx.core.content.FileProvider
 import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.tanay.warrior2026.data.BotProfile
-import com.tanay.warrior2026.data.BotSimulator
-import com.tanay.warrior2026.data.DayData
-import com.tanay.warrior2026.data.UserProfile
-import com.tanay.warrior2026.data.WarriorRepository
-import com.tanay.warrior2026.data.WarriorState
-import com.tanay.warrior2026.data.todayKey
-import com.tanay.warrior2026.notifications.WarriorScheduler
+import com.tanay.warrior.data.BotProfile
+import com.tanay.warrior.data.BotSimulator
+import com.tanay.warrior.data.DayData
+import com.tanay.warrior.data.UserProfile
+import com.tanay.warrior.data.WarriorRepository
+import com.tanay.warrior.data.WarriorState
+import com.tanay.warrior.data.todayKey
+import com.tanay.warrior.notifications.WarriorScheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -165,7 +165,7 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
     fun completeOnboarding() {
         // Ensure a default habit exists on first run
         val habits = if (_state.value.habits.isEmpty()) {
-            listOf(com.tanay.warrior2026.data.Habit(
+            listOf(com.tanay.warrior.data.Habit(
                 id = "habit_primary", name = "Main Habit", emoji = "🔥"))
         } else _state.value.habits
         val new = _state.value.copy(
@@ -185,7 +185,7 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
             // [NEW v3.2.0] Stamp every bot with today as their simulationStartDate.
             // This is the app install date — bots will only have data from this day
             // forward. The 365-day heatmap will show grey for all days before today.
-            val todayStr = com.tanay.warrior2026.data.todayKey()
+            val todayStr = com.tanay.warrior.data.todayKey()
             val savedFirstRun = repo.getFirstRunDate()
             val firstRunDate  = if (savedFirstRun.isBlank()) {
                 repo.saveFirstRunDate(todayStr)
@@ -197,7 +197,7 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
             // [FIX v3.1.0] generateBots() returns all 1050 bots (7 regions × 150).
             // [NEW v3.2.0] Each bot gets simulationStartDate = firstRunDate so their
             // history only covers time since the app was actually installed.
-            val rawBots  = com.tanay.warrior2026.data.generateBots()
+            val rawBots  = com.tanay.warrior.data.generateBots()
                 .map { it.copy(simulationStartDate = firstRunDate) }
             val newBots  = BotSimulator.advanceSimulation(rawBots)
             val botsJson = BotSimulator.saveBots(newBots)
@@ -279,7 +279,7 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         _showConfetti.value = true
         viewModelScope.launch {
             repo.saveState(new)
-            com.tanay.warrior2026.widget.StreakWidget().updateAll(getApplication())
+            com.tanay.warrior.widget.StreakWidget().updateAll(getApplication())
         }
         vibrate(longArrayOf(0, 100, 50, 100))
         val milestones = setOf(3, 7, 14, 21, 30, 60, 90, 180, 365)
@@ -301,7 +301,7 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         _state.value = new
         viewModelScope.launch {
             repo.saveState(new)
-            com.tanay.warrior2026.widget.StreakWidget().updateAll(getApplication())
+            com.tanay.warrior.widget.StreakWidget().updateAll(getApplication())
         }
         vibrate(longArrayOf(0, 500))
         true
@@ -321,7 +321,7 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
 
     fun addHabit(name: String, emoji: String) {
         val id = "habit_${System.currentTimeMillis()}"
-        val habit = com.tanay.warrior2026.data.Habit(id = id, name = name, emoji = emoji)
+        val habit = com.tanay.warrior.data.Habit(id = id, name = name, emoji = emoji)
         val new = _state.value.copy(
             habits       = _state.value.habits + habit,
             activeHabitId = id
@@ -366,9 +366,9 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         return true
     }
 
-    fun importPlain(entries: Map<com.tanay.warrior2026.data.DayData, String>): Boolean = false // unused overload
+    fun importPlain(entries: Map<com.tanay.warrior.data.DayData, String>): Boolean = false // unused overload
 
-    fun importPlainDays(days: Map<String, com.tanay.warrior2026.data.DayData>): Boolean {
+    fun importPlainDays(days: Map<String, com.tanay.warrior.data.DayData>): Boolean {
         if (days.isEmpty()) return false
         val active = _state.value.activeHabit ?: return false
         val updated = active.copy(history = active.history + days)
@@ -557,7 +557,7 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         return host.removePrefix("www.")
     }
 
-    private fun WarriorState.withUpdatedHabit(habit: com.tanay.warrior2026.data.Habit): WarriorState =
+    private fun WarriorState.withUpdatedHabit(habit: com.tanay.warrior.data.Habit): WarriorState =
         copy(habits = habits.map { if (it.id == habit.id) habit else it })
 
     private fun vibrate(pattern: LongArray) {
