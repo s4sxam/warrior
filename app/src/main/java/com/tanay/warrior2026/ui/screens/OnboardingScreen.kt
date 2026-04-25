@@ -1,4 +1,4 @@
-package com.tanay.warrior2026.ui.screens
+package com.tanay.warrior.ui.screens
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -19,7 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tanay.warrior2026.ui.theme.*
+import com.tanay.warrior.ui.theme.*
 import kotlinx.coroutines.launch
 
 private data class OnboardPage(
@@ -33,7 +33,7 @@ private val PAGES = listOf(
     OnboardPage(
         "🔒",
         "YOUR DATA.\nYOUR DEVICE.",
-        "Warrior 2026 has zero internet access.\nNo servers. No accounts. No tracking.\nYour streak lives on your phone and\nnowhere else — ever.",
+        "Warrior has zero internet access.\nNo servers. No accounts. No tracking.\nYour streak lives on your phone and\nnowhere else — ever.",
         Color(0xFF00B4FF)
     ),
     OnboardPage(
