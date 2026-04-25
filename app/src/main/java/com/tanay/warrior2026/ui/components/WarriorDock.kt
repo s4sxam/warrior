@@ -1,4 +1,4 @@
-package com.tanay.warrior2026.ui.components
+package com.tanay.warrior.ui.components
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -25,14 +25,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tanay.warrior2026.data.ViewState
-import com.tanay.warrior2026.ui.theme.*
+import com.tanay.warrior.data.ViewState
+import com.tanay.warrior.ui.theme.*
 import kotlin.math.abs
 
 @Composable
 fun WarriorDock(
     current: ViewState,
-    items: List<com.tanay.warrior2026.NavItem>,
+    items: List<com.tanay.warrior.NavItem>,
     onSelect: (ViewState) -> Unit
 ) {
     // Track the horizontal position of the touch/finger
@@ -77,7 +77,7 @@ fun WarriorDock(
 
 @Composable
 fun DockItem(
-    item: com.tanay.warrior2026.NavItem,
+    item: com.tanay.warrior.NavItem,
     isSelected: Boolean,
     mouseX: Float,
     onClick: () -> Unit
