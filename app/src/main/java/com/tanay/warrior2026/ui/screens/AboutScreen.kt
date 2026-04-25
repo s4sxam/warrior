@@ -1,4 +1,4 @@
-package com.tanay.warrior2026.ui.screens
+package com.tanay.warrior.ui.screens
 
 // [FIX]    v2.3.0: Removed onTestUpdate / developer tools.
 // [UPDATE] v3.1.0: Export now has one-tap copy button.
@@ -29,8 +29,8 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.tanay.warrior2026.data.DayData
-import com.tanay.warrior2026.ui.theme.*
+import com.tanay.warrior.data.DayData
+import com.tanay.warrior.ui.theme.*
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
