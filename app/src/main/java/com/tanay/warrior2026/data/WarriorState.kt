@@ -94,7 +94,8 @@ data class WarriorState(
     // v2.0.0 additions
     val userProfile: UserProfile      = UserProfile(),
     val hasCompletedProfile: Boolean  = false,
-    val botsJson: String              = ""  // serialized List<BotProfile>
+    val botsJson: String              = "",  // serialized List<BotProfile>
+    val lastConfession: String?        = null
 ) {
     // ── Convenience accessors — delegate to the active habit ──────────────────
     val activeHabit: Habit? get() = habits.find { it.id == activeHabitId } ?: habits.firstOrNull()
@@ -114,4 +115,4 @@ data class WarriorState(
     val primaryHabit: Habit? get() = habits.firstOrNull()
 }
 
-enum class ViewState { DASHBOARD, ANALYSIS, ARCHIVE, ABOUT, LEADERBOARD, HABITS }
+enum class ViewState { DASHBOARD, ANALYSIS, ARCHIVE, ABOUT, LEADERBOARD, HABITS } }
