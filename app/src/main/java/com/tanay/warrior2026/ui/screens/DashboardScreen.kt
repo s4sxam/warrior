@@ -1,5 +1,9 @@
 package com.tanay.warrior.ui.screens
 
+// [UPDATE] v5.0.0: WarRoomBackground particle system added as bottom layer.
+//                  StreakRingColor replaces hardcoded ring color logic.
+//                  LiveRival + CommanderVoice already wired in v2.4.0 (no change needed).
+
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -27,7 +31,7 @@ import com.tanay.warrior.data.WarriorState
 import com.tanay.warrior.ui.theme.*
 import com.tanay.warrior.ui.components.BlackoutOverlay
 import com.tanay.warrior.ui.components.CharacterGuild.WarriorRankCard
-import com.tanay.warrior.ui.components.ConfessionalSheet          // ← NEW
+import com.tanay.warrior.ui.components.ConfessionalSheet
 import com.tanay.warrior.ui.components.EvolvingStreakNumber
 import com.tanay.warrior.ui.components.GlitchOverlay
 import com.tanay.warrior.ui.components.HoloRadarRing
@@ -36,10 +40,12 @@ import com.tanay.warrior.ui.components.ShatterOverlay
 import com.tanay.warrior.ui.components.SlashOverlay
 import com.tanay.warrior.ui.components.StreakFuneralOverlay
 import com.tanay.warrior.ui.components.VillainArcOverlay
+import com.tanay.warrior.ui.components.WarRoomBackground          // ← NEW v5.0.0
+import com.tanay.warrior.ui.components.rememberStreakRingColor    // ← NEW v5.0.0
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
-// ── Motivational quotes pool ──────────────────────────────────
+// ── Motivational quotes pool ──────────────────────────────────────────────────
 private val QUOTES = listOf(
     "Discipline is choosing between what you want NOW and what you want MOST.",
     "Every day clean is a vote for the man you're becoming.",
@@ -59,8 +65,7 @@ fun DashboardScreen(
     onPanicClick: () -> Unit,
     onVictoryClick: () -> Unit,
     onRelapseClick: () -> Unit,
-    // ── NEW: Confessional wiring ──────────────────────────────
-    onSaveConfession: (String) -> Unit = {},          // ← NEW
+    onSaveConfession: (String) -> Unit = {},
 ) {
     val streakAnim by animateIntAsState(
         targetValue   = state.streak,
@@ -73,10 +78,8 @@ fun DashboardScreen(
         label         = "best"
     )
 
-    // Stable random quote — changes only when date changes
     val quote = remember { QUOTES.random() }
 
-    // Detect yesterday's relapse for recovery card
     val yesterdayFailed = remember(state.history) {
         val yKey = LocalDate.now().minusDays(1).format(DateTimeFormatter.ISO_LOCAL_DATE)
         state.history[yKey]?.status == "failed"
@@ -86,7 +89,6 @@ fun DashboardScreen(
         state.history[LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)]?.status
     }
 
-    // ── Derived fields for overlay components ─────────────────
     val consecutiveRelapses = remember(state.history) {
         var count = 0
         var date  = LocalDate.now()
@@ -106,40 +108,48 @@ fun DashboardScreen(
         state.streak == 0 && todayStatus == "failed"
     }
 
-    // ── Overlay state ──────────────────────────────────────────
     val isGlitching = remember(state.streak, todayStatus) {
         state.streak == 0 && todayStatus == "failed"
     }
     val isShattered = isGlitching
     val isSlashing  = remember(todayStatus) { todayStatus == "clean" }
 
-    // ── Confessional sheet: shown after relapse is logged ──────
-    // showConfessional triggers when today is logged as "failed"
     val showConfessional = remember(todayStatus) { todayStatus == "failed" }
     var confessionalDismissed by remember(todayStatus) { mutableStateOf(false) }
 
-    // ── Root Box: all layers stacked ───────────────────────────
+    // ── Root Box: all layers stacked ──────────────────────────────────────────
     Box(modifier = Modifier.fillMaxSize()) {
 
-        // ── Scrollable content ─────────────────────────────────
+        // ── [NEW v5.0.0] War Room Background — bottommost layer ───────────────
+        // Sits behind ALL content. Reads streak to evolve its particle mode:
+        //   Day 0–9:   digital rain / fog
+        //   Day 10–29: transition (rain fades, first embers)
+        //   Day 30+:   glowing embers drifting upward
+        //   Day 90+:   more embers, larger radius, near-white gold cores
+        WarRoomBackground(
+            streak   = streakAnim,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        // ── Scrollable content ─────────────────────────────────────────────
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(BgBlack)
+                // Semi-transparent surface so background particles show through
+                .background(BgBlack.copy(alpha = 0.72f))
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
-            // ── Recovery card ──
             if (yesterdayFailed && !todayLogged) {
                 Spacer(Modifier.height(4.dp))
                 RecoveryCard(bestStreak = state.bestStreak)
                 Spacer(Modifier.height(14.dp))
             }
 
-            // ── Streak hero ──
+            // ── [UPDATED v5.0.0] StreakHero now uses animated ring color ──
             StreakHero(
                 streak      = streakAnim,
                 best        = bestAnim,
@@ -148,7 +158,6 @@ fun DashboardScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // ── Rank card ──
             WarriorRankCard(
                 streak   = streakAnim,
                 modifier = Modifier.fillMaxWidth()
@@ -156,7 +165,6 @@ fun DashboardScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // ── Quote ──
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -178,7 +186,6 @@ fun DashboardScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // ── Panic ──
             Button(
                 onClick  = onPanicClick,
                 modifier = Modifier
@@ -195,7 +202,6 @@ fun DashboardScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            // ── Action row ──
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(
                     onClick  = onVictoryClick,
@@ -231,11 +237,6 @@ fun DashboardScreen(
                 )
             }
 
-            // ─────────────────────────────────────────────────────
-            // ── CONFESSIONAL SHEET — shown inline after relapse ──
-            // Visible when: today is logged as "failed" AND user
-            // hasn't dismissed it yet this session.
-            // ─────────────────────────────────────────────────────
             if (showConfessional && !confessionalDismissed) {
                 Spacer(Modifier.height(20.dp))
                 ConfessionalSheet(
@@ -243,7 +244,7 @@ fun DashboardScreen(
                         onSaveConfession(text)
                         confessionalDismissed = true
                     },
-                    lastConfession = state.lastConfession,   // ← reads from WarriorState
+                    lastConfession = state.lastConfession,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(20.dp))
@@ -252,7 +253,6 @@ fun DashboardScreen(
 
             Spacer(Modifier.height(22.dp))
 
-            // ── Battle Calendar ──
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column {
                     Text("BATTLE CALENDAR", fontSize = 10.sp, color = TextSecondary,
@@ -273,7 +273,7 @@ fun DashboardScreen(
                 fontWeight = FontWeight.Black, letterSpacing = 5.sp)
         }
 
-        // ── Overlay layers ─────────────────────────────────────
+        // ── Overlay layers ─────────────────────────────────────────────────
         VillainArcOverlay(relapseCount = consecutiveRelapses)
         MilestoneBurst(streak = streakAnim)
         GlitchOverlay(isGlitching = isGlitching)
@@ -284,7 +284,10 @@ fun DashboardScreen(
     }
 }
 
-// ── Streak hero with ring ──────────────────────────────────────
+// ── Streak hero with animated ring color ──────────────────────────────────────
+// [UPDATED v5.0.0] ringColor now comes from rememberStreakRingColor() which
+// animates smoothly: rusty iron (Day 0) → steel blue (Day 30) → radiant gold (Day 90+)
+
 @Composable
 private fun StreakHero(streak: Int, best: Int, todayStatus: String?) {
     val ringPct = if (best > 0) (streak.toFloat() / best).coerceIn(0f, 1f) else 0f
@@ -293,12 +296,10 @@ private fun StreakHero(streak: Int, best: Int, todayStatus: String?) {
         animationSpec = tween(1000, easing = EaseOutCubic),
         label         = "ring"
     )
-    val ringColor = when {
-        streak == 0        -> Color(0xFF2A2A2A)
-        streak >= best     -> Gold
-        streak >= best / 2 -> VictoryGreen
-        else               -> WarriorRed
-    }
+
+    // [NEW v5.0.0] Animated ring color replacing the hardcoded when-block.
+    // Milestones: Day 0 = dim iron, Day 30 = steel blue, Day 90 = radiant gold.
+    val ringColor by rememberStreakRingColor(streak = streak)
 
     Box(
         modifier = Modifier
@@ -325,6 +326,7 @@ private fun StreakHero(streak: Int, best: Int, todayStatus: String?) {
                 androidx.compose.foundation.Canvas(modifier = Modifier.size(120.dp)) {
                     val stroke = 10.dp.toPx()
                     val inset  = stroke / 2f
+                    // Track (background arc)
                     drawArc(
                         color      = Color(0xFF1A1A1A),
                         startAngle = -90f, sweepAngle = 360f,
@@ -333,6 +335,7 @@ private fun StreakHero(streak: Int, best: Int, todayStatus: String?) {
                         size       = Size(size.width - stroke, size.height - stroke),
                         style      = Stroke(stroke, cap = StrokeCap.Round)
                     )
+                    // Progress arc — color animates via rememberStreakRingColor
                     drawArc(
                         color      = ringColor,
                         startAngle = -90f, sweepAngle = 360f * animRing,
@@ -374,7 +377,7 @@ private fun StreakHero(streak: Int, best: Int, todayStatus: String?) {
     }
 }
 
-// ── Recovery card ─────────────────────────────────────────────
+// ── Recovery card ──────────────────────────────────────────────────────────────
 @Composable
 private fun RecoveryCard(bestStreak: Int) {
     Box(
@@ -399,7 +402,7 @@ private fun RecoveryCard(bestStreak: Int) {
     }
 }
 
-// ── Calendar ──────────────────────────────────────────────────
+// ── Calendar ───────────────────────────────────────────────────────────────────
 @Composable
 fun BattleCalendar(state: WarriorState) {
     val today       = remember { LocalDate.now() }
@@ -459,7 +462,7 @@ fun BattleCalendar(state: WarriorState) {
     }
 }
 
-// ── Legend item ───────────────────────────────────────────────
+// ── Legend item ────────────────────────────────────────────────────────────────
 @Composable
 private fun LegendItem(color: Color, label: String, border: Boolean = false) {
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -473,7 +476,7 @@ private fun LegendItem(color: Color, label: String, border: Boolean = false) {
     }
 }
 
-// ── Glass Card ────────────────────────────────────────────────
+// ── Glass Card ─────────────────────────────────────────────────────────────────
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
@@ -489,7 +492,7 @@ fun GlassCard(
     )
 }
 
-// ── Stat card ─────────────────────────────────────────────────
+// ── Stat card ──────────────────────────────────────────────────────────────────
 @Composable
 fun StatCard(
     modifier:   Modifier = Modifier,
