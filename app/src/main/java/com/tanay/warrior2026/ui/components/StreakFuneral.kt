@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlin.math.sin
@@ -151,7 +152,7 @@ private fun DrawScope.drawGravestone(
     drawPath(
         path  = archPath,
         color = StoneEdge.copy(alpha = alpha * 0.4f),
-        style = Stroke(strokeWidth = 1.5f),
+        style = Stroke(width = 1.5f),
     )
 
     // ── Moss strip at base ────────────────────────────────────
