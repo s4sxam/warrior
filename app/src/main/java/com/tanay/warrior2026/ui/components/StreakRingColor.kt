@@ -2,6 +2,7 @@ package com.tanay.warrior.ui.components
 
 import androidx.compose.animation.core.*
 import androidx.compose.runtime.*
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 
