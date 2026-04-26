@@ -2,6 +2,8 @@ package com.tanay.warrior.ui.screens
 
 // ── [NEW] LeaderboardScreen.kt ────────────────────────────────────────────────
 // The Phantom Leaderboard — regional + global tabs, live bot profiles
+// [WIRED v+1] ArenaMapCard added above user rank card.
+//             LiveRivalCard added below ArenaMap, before tab toggle.
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -36,6 +38,8 @@ import com.tanay.warrior.data.BotSimulator
 import com.tanay.warrior.data.DATE_FORMATTER
 import com.tanay.warrior.data.WarriorRegion
 import com.tanay.warrior.data.tierOf
+import com.tanay.warrior.ui.components.ArenaMapCard
+import com.tanay.warrior.ui.components.LiveRivalCard
 import com.tanay.warrior.ui.theme.*
 import java.time.LocalDate
 
@@ -44,14 +48,19 @@ fun LeaderboardScreen(
     regionalBoard: List<BotSimulator.LeaderboardEntry>,
     globalBoard: List<BotSimulator.LeaderboardEntry>,
     userRegion: String,
-    getBotProfile: (Int) -> BotProfile?
+    getBotProfile: (Int) -> BotProfile?,
+    myStreak: Int    = 0,
+    rivalStreak: Int = 0,
 ) {
     var isGlobal         by remember { mutableStateOf(false) }
     var selectedBotId    by remember { mutableStateOf<Int?>(null) }
     val board = if (isGlobal) globalBoard else regionalBoard
     val userEntry = board.find { it.isUser }
 
-    // Bot profile dialog
+    val arenaPlayers = remember(board) {
+        board.take(7).map { it.name to it.points }
+    }
+
     selectedBotId?.let { botId ->
         val bot = getBotProfile(botId)
         if (bot != null) {
@@ -61,7 +70,6 @@ fun LeaderboardScreen(
 
     Column(modifier = Modifier.fillMaxSize()) {
 
-        // ── Header ──────────────────────────────────────────────────────────
         Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
             Text(
                 "THE ARENA",
@@ -75,7 +83,24 @@ fun LeaderboardScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            // User's rank card
+            // ── ARENA MAP ───────────────────────────────────────────────────
+            ArenaMapCard(
+                players  = arenaPlayers,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(Modifier.height(10.dp))
+
+            // ── LIVE RIVAL ──────────────────────────────────────────────────
+            LiveRivalCard(
+                myStreak    = myStreak,
+                rivalStreak = rivalStreak,
+                modifier    = Modifier.fillMaxWidth()
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            // ── User rank card ──────────────────────────────────────────────
             userEntry?.let { u ->
                 Box(
                     modifier = Modifier
@@ -121,7 +146,7 @@ fun LeaderboardScreen(
 
             Spacer(Modifier.height(14.dp))
 
-            // Regional / Global toggle
+            // ── Regional / Global toggle ────────────────────────────────────
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(12.dp))
@@ -181,7 +206,6 @@ private fun LeaderboardRow(entry: BotSimulator.LeaderboardEntry, onClick: () -> 
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Rank
         Text(
             "#${entry.rank}",
             fontSize   = 13.sp,
@@ -190,7 +214,6 @@ private fun LeaderboardRow(entry: BotSimulator.LeaderboardEntry, onClick: () -> 
             modifier   = Modifier.width(40.dp)
         )
 
-        // Medal for top 3
         if (entry.rank <= 3) {
             Text(
                 when (entry.rank) { 1 -> "🥇"; 2 -> "🥈"; else -> "🥉" },
@@ -201,7 +224,6 @@ private fun LeaderboardRow(entry: BotSimulator.LeaderboardEntry, onClick: () -> 
             Spacer(Modifier.width(22.dp))
         }
 
-        // Name + region indicator
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 entry.name,
@@ -232,7 +254,6 @@ private fun LeaderboardRow(entry: BotSimulator.LeaderboardEntry, onClick: () -> 
             }
         }
 
-        // Points
         Text(
             "${entry.points} pts",
             fontSize   = 13.sp,
@@ -268,9 +289,6 @@ private fun TabButton(label: String, selected: Boolean, onClick: () -> Unit) {
 // ── Bot Profile Dialog ────────────────────────────────────────────────────────
 @Composable
 fun BotProfileDialog(bot: BotProfile, onDismiss: () -> Unit) {
-    // Generate calendar on demand (procedural, never stored)
-    // [FIX v3.1.0] Use real simulated calendar — only days actually simulated are
-    // shown. Days before simulation start appear grey. No more fake procedural data.
     val calendar = remember(bot.id) { BotSimulator.realSimulatedCalendar(bot) }
     val total    = (bot.totalCleanDays + bot.totalFailDays).coerceAtLeast(1)
     val winRate  = (bot.totalCleanDays.toFloat() / total * 100f).toInt()
@@ -290,7 +308,6 @@ fun BotProfileDialog(bot: BotProfile, onDismiss: () -> Unit) {
                     .verticalScroll(rememberScrollState())
                     .padding(20.dp)
             ) {
-                // Close button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -308,7 +325,6 @@ fun BotProfileDialog(bot: BotProfile, onDismiss: () -> Unit) {
 
                 Spacer(Modifier.height(8.dp))
 
-                // Bot header
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -332,20 +348,15 @@ fun BotProfileDialog(bot: BotProfile, onDismiss: () -> Unit) {
                     Spacer(Modifier.width(16.dp))
                     Column {
                         Text(bot.name, fontSize = 22.sp, fontWeight = FontWeight.Black, color = TextPrimary)
-                        Text(
-                            regionDisplayName(bot.region),
-                            fontSize = 12.sp, color = TextTertiary
-                        )
+                        Text(regionDisplayName(bot.region), fontSize = 12.sp, color = TextTertiary)
                         Spacer(Modifier.height(4.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            // Tier badge
                             Text(
                                 "Tier ${tierOf(bot)}",
                                 fontSize = 11.sp, color = WarriorRed,
                                 fontWeight = FontWeight.Bold, letterSpacing = 1.sp
                             )
                             Text("•", fontSize = 11.sp, color = TextDim)
-                            // Archetype badge
                             val archetypeLabel = when (
                                 runCatching { BotArchetype.valueOf(bot.archetype) }.getOrDefault(BotArchetype.GRINDER)
                             ) {
@@ -356,40 +367,28 @@ fun BotProfileDialog(bot: BotProfile, onDismiss: () -> Unit) {
                                 BotArchetype.UNDERDOG      -> "🐉 Underdog"
                                 BotArchetype.PLATEAUER     -> "📉 Plateauer"
                             }
-                            Text(
-                                archetypeLabel,
-                                fontSize = 11.sp, color = Gold,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                            Text(archetypeLabel, fontSize = 11.sp, color = Gold, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
 
                 Spacer(Modifier.height(16.dp))
 
-                // Stats row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    StatCard("POINTS",   "${bot.points}",        Gold,         Modifier.weight(1f))
-                    StatCard("WIN RATE", "$winRate%",            VictoryGreen, Modifier.weight(1f))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    StatCard("POINTS",   "${bot.points}",             Gold,          Modifier.weight(1f))
+                    StatCard("WIN RATE", "$winRate%",                 VictoryGreen,  Modifier.weight(1f))
                     StatCard("STREAK",   "${bot.currentStreak} days", TextSecondary, Modifier.weight(1f))
                 }
 
                 Spacer(Modifier.height(16.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     StatCard("VICTORIES", "${bot.totalCleanDays}", VictoryGreen, Modifier.weight(1f))
                     StatCard("DEFEATS",   "${bot.totalFailDays}",  WarriorRed,   Modifier.weight(1f))
                 }
 
                 Spacer(Modifier.height(20.dp))
 
-                // Calendar heatmap
                 Text(
                     "365-DAY RECORD",
                     fontSize = 11.sp, color = TextTertiary,
@@ -423,17 +422,14 @@ private fun StatCard(
     }
 }
 
-// StatCard — single overload, value and label only
-
 @Composable
 private fun BotCalendarHeatmap(calendar: Map<String, Boolean?>) {
-    val today    = LocalDate.now()
-    val start    = today.minusDays(364)
-    val dayOfWeek = start.dayOfWeek.value % 7  // 0=Sun offset
+    val today     = LocalDate.now()
+    val start     = today.minusDays(364)
+    val dayOfWeek = start.dayOfWeek.value % 7
 
-    // Build 53 weeks × 7 days grid
     val cells = mutableListOf<Boolean?>()
-    repeat(dayOfWeek) { cells.add(null) } // leading empty
+    repeat(dayOfWeek) { cells.add(null) }
     var d = start
     while (!d.isAfter(today)) {
         cells.add(calendar[d.format(DATE_FORMATTER)])
@@ -467,7 +463,7 @@ private fun BotCalendarHeatmap(calendar: Map<String, Boolean?>) {
                                         when (value) {
                                             true  -> VictoryGreen.copy(alpha = 0.85f)
                                             false -> WarriorRed.copy(alpha = 0.75f)
-                                            null  -> Color(0xFF111111) // not yet simulated or padding
+                                            null  -> Color(0xFF111111)
                                         }
                                     )
                             )
@@ -480,9 +476,9 @@ private fun BotCalendarHeatmap(calendar: Map<String, Boolean?>) {
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                LegendDot(VictoryGreen, "Clean")
-                LegendDot(WarriorRed,   "Relapse")
-                LegendDot(Color(0xFF333333), "Not yet")
+                LegendDot(VictoryGreen,       "Clean")
+                LegendDot(WarriorRed,         "Relapse")
+                LegendDot(Color(0xFF333333),  "Not yet")
             }
         }
     }
@@ -490,13 +486,11 @@ private fun BotCalendarHeatmap(calendar: Map<String, Boolean?>) {
 
 @Composable
 private fun LegendDot(color: Color, label: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
         Box(modifier = Modifier.size(8.dp).clip(RoundedCornerShape(2.dp)).background(color))
         Text(label, fontSize = 10.sp, color = TextDim)
     }
 }
-
-private fun regionDisplayName(regionName: String): String =
-    WarriorRegion.entries.find { it.name == regionName }?.displayName ?: regionName
-
-// tierOf() is imported from BotData.kt — uses baseDiscipline (correct)
