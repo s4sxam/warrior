@@ -156,7 +156,7 @@ private fun LegendGlowBadge(config: RankConfig, size: Dp = 72.dp) {
                     color  = BattleGold.copy(alpha = glowAlpha),
                     radius = radius * 1.2f,
                     center = Offset(cx, cy),
-                    style  = Stroke(strokeWidth = 3f + 4f * pulse),
+                    style  = Stroke(width = 3f + 4f * pulse),
                 )
             }
             .clip(androidx.compose.foundation.shape.CircleShape)
