@@ -27,6 +27,7 @@ import com.tanay.warrior.data.WarriorState
 import com.tanay.warrior.ui.theme.*
 import com.tanay.warrior.ui.components.BlackoutOverlay
 import com.tanay.warrior.ui.components.CharacterGuild.WarriorRankCard
+import com.tanay.warrior.ui.components.ConfessionalSheet          // ← NEW
 import com.tanay.warrior.ui.components.EvolvingStreakNumber
 import com.tanay.warrior.ui.components.GlitchOverlay
 import com.tanay.warrior.ui.components.HoloRadarRing
@@ -58,6 +59,8 @@ fun DashboardScreen(
     onPanicClick: () -> Unit,
     onVictoryClick: () -> Unit,
     onRelapseClick: () -> Unit,
+    // ── NEW: Confessional wiring ──────────────────────────────
+    onSaveConfession: (String) -> Unit = {},          // ← NEW
 ) {
     val streakAnim by animateIntAsState(
         targetValue   = state.streak,
@@ -84,7 +87,6 @@ fun DashboardScreen(
     }
 
     // ── Derived fields for overlay components ─────────────────
-    // consecutiveRelapses: count of consecutive "failed" days ending today
     val consecutiveRelapses = remember(state.history) {
         var count = 0
         var date  = LocalDate.now()
@@ -96,28 +98,25 @@ fun DashboardScreen(
         count
     }
 
-    // lastDeadStreak: best streak before the most recent relapse chain
-    // Approximated as bestStreak so the funeral has meaningful data.
     val lastDeadStreak = remember(state.bestStreak, state.streak) {
         if (state.streak == 0) state.bestStreak.coerceAtLeast(1) else 0
     }
 
-    // showFuneral: true the day streak resets to 0 (streak == 0 and today is logged failed)
     val showFuneral = remember(state.streak, todayStatus) {
         state.streak == 0 && todayStatus == "failed"
     }
 
     // ── Overlay state ──────────────────────────────────────────
-    // GlitchOverlay triggers on relapse (streak just hit 0)
     val isGlitching = remember(state.streak, todayStatus) {
         state.streak == 0 && todayStatus == "failed"
     }
-
-    // ShatterOverlay — same trigger as glitch, companion shatter
     val isShattered = isGlitching
+    val isSlashing  = remember(todayStatus) { todayStatus == "clean" }
 
-    // SlashOverlay — triggers on victory (today logged clean)
-    val isSlashing = remember(todayStatus) { todayStatus == "clean" }
+    // ── Confessional sheet: shown after relapse is logged ──────
+    // showConfessional triggers when today is logged as "failed"
+    val showConfessional = remember(todayStatus) { todayStatus == "failed" }
+    var confessionalDismissed by remember(todayStatus) { mutableStateOf(false) }
 
     // ── Root Box: all layers stacked ───────────────────────────
     Box(modifier = Modifier.fillMaxSize()) {
@@ -133,7 +132,7 @@ fun DashboardScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
-            // ── Recovery card — shown day after relapse if today not yet logged ──
+            // ── Recovery card ──
             if (yesterdayFailed && !todayLogged) {
                 Spacer(Modifier.height(4.dp))
                 RecoveryCard(bestStreak = state.bestStreak)
@@ -149,7 +148,7 @@ fun DashboardScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // ── Rank card — between StreakHero and Quote ──
+            // ── Rank card ──
             WarriorRankCard(
                 streak   = streakAnim,
                 modifier = Modifier.fillMaxWidth()
@@ -219,7 +218,6 @@ fun DashboardScreen(
                 }
             }
 
-            // Already logged message
             if (todayLogged) {
                 Spacer(Modifier.height(8.dp))
                 Text(
@@ -233,6 +231,25 @@ fun DashboardScreen(
                 )
             }
 
+            // ─────────────────────────────────────────────────────
+            // ── CONFESSIONAL SHEET — shown inline after relapse ──
+            // Visible when: today is logged as "failed" AND user
+            // hasn't dismissed it yet this session.
+            // ─────────────────────────────────────────────────────
+            if (showConfessional && !confessionalDismissed) {
+                Spacer(Modifier.height(20.dp))
+                ConfessionalSheet(
+                    onSubmit = { text ->
+                        onSaveConfession(text)
+                        confessionalDismissed = true
+                    },
+                    lastConfession = state.lastConfession,   // ← reads from WarriorState
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(20.dp))
+                )
+            }
+
             Spacer(Modifier.height(22.dp))
 
             // ── Battle Calendar ──
@@ -243,7 +260,6 @@ fun DashboardScreen(
                     Spacer(Modifier.height(14.dp))
                     BattleCalendar(state = state)
                     Spacer(Modifier.height(10.dp))
-                    // Legend
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         LegendItem(color = VictoryGreen, label = "Clean")
                         LegendItem(color = WarriorRed,   label = "Failed")
@@ -257,30 +273,13 @@ fun DashboardScreen(
                 fontWeight = FontWeight.Black, letterSpacing = 5.sp)
         }
 
-        // ── Overlay layers (drawn above content, in z-order) ───
-
-        // 1. VillainArc — vignette + noise + taunt (beneath action overlays)
+        // ── Overlay layers ─────────────────────────────────────
         VillainArcOverlay(relapseCount = consecutiveRelapses)
-
-        // 2. Milestone burst — fires at days 7, 30, 90
         MilestoneBurst(streak = streakAnim)
-
-        // 3. Glitch — on relapse
         GlitchOverlay(isGlitching = isGlitching)
-
-        // 4. Shatter — on relapse (companion to glitch)
         ShatterOverlay(isShattered = isShattered)
-
-        // 5. Slash — on victory
         SlashOverlay(isSlashing = isSlashing)
-
-        // 6. Streak Funeral — when streak dies
-        StreakFuneralOverlay(
-            deadStreak = lastDeadStreak,
-            visible    = showFuneral,
-        )
-
-        // 7. Blackout — topmost layer, fades as streak grows
+        StreakFuneralOverlay(deadStreak = lastDeadStreak, visible = showFuneral)
         BlackoutOverlay(streak = streakAnim)
     }
 }
@@ -317,19 +316,15 @@ private fun StreakHero(streak: Int, best: Int, todayStatus: String?) {
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment     = Alignment.CenterVertically
         ) {
-            // Ring — HoloRadarRing sits behind, streak number on top
             Box(
                 contentAlignment = Alignment.Center,
                 modifier         = Modifier.size(120.dp)
             ) {
-                // HoloRadar: background atmosphere layer
                 HoloRadarRing(modifier = Modifier.fillMaxSize())
 
-                // Streak ring arc drawn over the radar
                 androidx.compose.foundation.Canvas(modifier = Modifier.size(120.dp)) {
                     val stroke = 10.dp.toPx()
                     val inset  = stroke / 2f
-                    // Track
                     drawArc(
                         color      = Color(0xFF1A1A1A),
                         startAngle = -90f, sweepAngle = 360f,
@@ -338,7 +333,6 @@ private fun StreakHero(streak: Int, best: Int, todayStatus: String?) {
                         size       = Size(size.width - stroke, size.height - stroke),
                         style      = Stroke(stroke, cap = StrokeCap.Round)
                     )
-                    // Progress
                     drawArc(
                         color      = ringColor,
                         startAngle = -90f, sweepAngle = 360f * animRing,
@@ -349,12 +343,8 @@ private fun StreakHero(streak: Int, best: Int, todayStatus: String?) {
                     )
                 }
 
-                // Streak number — EvolvingStreakNumber replaces plain Text
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    EvolvingStreakNumber(
-                        streak   = streak,
-                        fontSize = 38.sp,
-                    )
+                    EvolvingStreakNumber(streak = streak, fontSize = 38.sp)
                     Text(
                         "DAYS",
                         fontSize      = 8.sp,
@@ -365,7 +355,6 @@ private fun StreakHero(streak: Int, best: Int, todayStatus: String?) {
                 }
             }
 
-            // Side stats
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("$best", fontSize = 24.sp, fontWeight = FontWeight.Black, color = Gold)
