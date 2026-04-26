@@ -5,6 +5,8 @@ package com.tanay.warrior
 // [UPDATE] v2.2.0: Update dialog now uses DownloadManager — no browser open
 // [FIX]    v2.3.0: Removed onTestUpdate parameter from WarriorApp and AboutScreen.
 //                  Auto-check on launch is the only update trigger — no manual button.
+// [WIRED]  v2.4.0: CommanderVoice integrated — speakVictory on victory event,
+//                  speakRelapse on relapse event, release() in onDestroy.
 
 import android.content.Intent
 import android.Manifest
@@ -49,6 +51,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tanay.warrior.data.ViewState
+import com.tanay.warrior.ui.components.CommanderVoice   // ← NEW
 import com.tanay.warrior.ui.screens.*
 import com.tanay.warrior.ui.theme.*
 import kotlin.math.abs
@@ -57,6 +60,9 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: WarriorViewModel by viewModels()
 
+    // ── CommanderVoice — init once, release in onDestroy ──────
+    private lateinit var commander: CommanderVoice          // ← NEW
+
     private val notifLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) {}
@@ -64,6 +70,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+
+        // Initialise CommanderVoice (TTS engine warms up asynchronously)
+        commander = CommanderVoice(this)                    // ← NEW
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
@@ -84,11 +93,9 @@ class MainActivity : ComponentActivity() {
                 val globalBoard      by viewModel.globalBoard.collectAsStateWithLifecycle()
 
                 when {
-                    // Step 1: Original onboarding pages
                     !state.hasCompletedOnboarding -> {
                         OnboardingScreen(onFinish = { viewModel.completeOnboarding() })
                     }
-                    // Step 2: v2.0.0 Commander Profile setup
                     !state.hasCompletedProfile -> {
                         CommanderProfileScreen(
                             isGeneratingBots = isGeneratingBots,
@@ -97,14 +104,12 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     }
-                    // Step 3: Main app
                     else -> {
                         val context = LocalContext.current
 
-                        // v2.2.0: Update dialog — phases: IDLE → DOWNLOADING → READY / FAILED
+                        // v2.2.0: Update dialog
                         if (updateState.hasUpdate && !updateState.dismissed) {
                             Dialog(onDismissRequest = {
-                                // Only allow dismiss when not actively downloading
                                 if (updateState.phase != WarriorViewModel.DownloadPhase.DOWNLOADING) {
                                     viewModel.dismissUpdate()
                                 }
@@ -142,13 +147,10 @@ class MainActivity : ComponentActivity() {
 
                                     when (updateState.phase) {
 
-                                        // ── Not yet started ──────────────────
                                         WarriorViewModel.DownloadPhase.IDLE -> {
                                             Button(
                                                 onClick = { viewModel.downloadUpdate() },
-                                                colors  = ButtonDefaults.buttonColors(
-                                                    containerColor = WarriorRed
-                                                ),
+                                                colors  = ButtonDefaults.buttonColors(containerColor = WarriorRed),
                                                 modifier = Modifier.fillMaxWidth()
                                             ) {
                                                 Text(
@@ -163,7 +165,6 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
 
-                                        // ── Downloading — show progress bar ──
                                         WarriorViewModel.DownloadPhase.DOWNLOADING -> {
                                             val fraction = updateState.progressFraction
                                             if (fraction < 0f) {
@@ -187,20 +188,13 @@ class MainActivity : ComponentActivity() {
                                                 "%.1f / %.1f MB".format(mbDone, mbTotal)
                                             else
                                                 "Downloading..."
-                                            Text(
-                                                text     = label,
-                                                fontSize = 12.sp,
-                                                color    = TextTertiary
-                                            )
+                                            Text(text = label, fontSize = 12.sp, color = TextTertiary)
                                         }
 
-                                        // ── Done — prompt to install ─────────
                                         WarriorViewModel.DownloadPhase.READY -> {
                                             Button(
                                                 onClick = { viewModel.installApk(context) },
-                                                colors  = ButtonDefaults.buttonColors(
-                                                    containerColor = WarriorRed
-                                                ),
+                                                colors  = ButtonDefaults.buttonColors(containerColor = WarriorRed),
                                                 modifier = Modifier.fillMaxWidth()
                                             ) {
                                                 Text(
@@ -215,7 +209,6 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
 
-                                        // ── Download failed ──────────────────
                                         WarriorViewModel.DownloadPhase.FAILED -> {
                                             Text(
                                                 text      = "Download failed. Check your connection.",
@@ -226,9 +219,7 @@ class MainActivity : ComponentActivity() {
                                             Spacer(modifier = Modifier.height(12.dp))
                                             Button(
                                                 onClick = { viewModel.retryDownload() },
-                                                colors  = ButtonDefaults.buttonColors(
-                                                    containerColor = WarriorRed
-                                                ),
+                                                colors  = ButtonDefaults.buttonColors(containerColor = WarriorRed),
                                                 modifier = Modifier.fillMaxWidth()
                                             ) {
                                                 Text(
@@ -251,8 +242,17 @@ class MainActivity : ComponentActivity() {
                             state           = state,
                             vm              = viewModel,
                             showConfetti    = showConfetti,
-                            onLogVictory    = { viewModel.logVictory() },
-                            onLogRelapse    = { url -> viewModel.logRelapse(url) },
+                            // ── Victory: log + speak ───────────────────────
+                            onLogVictory    = {                             // ← WIRED
+                                viewModel.logVictory()
+                                commander.speakVictory(state.streak + 1)   // +1 = the day just logged
+                            },
+                            // ── Relapse: log + speak ───────────────────────
+                            onLogRelapse    = { url ->                     // ← WIRED
+                                val ok = viewModel.logRelapse(url)
+                                if (ok) commander.speakRelapse()
+                                ok
+                            },
                             onClearConfetti = { viewModel.clearConfetti() },
                             onExport        = { viewModel.exportJson() },
                             onImport        = { json -> viewModel.importJson(json) },
@@ -266,6 +266,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    // ── Release TTS engine when Activity is destroyed ──────────
+    override fun onDestroy() {                                  // ← NEW
+        super.onDestroy()
+        commander.release()
     }
 }
 
@@ -334,19 +340,23 @@ fun WarriorApp(
                 ) { view ->
                     when (view) {
                         ViewState.DASHBOARD -> DashboardScreen(
-                            state          = state,
-                            onPanicClick   = { showPanicModal = true },
-                            onVictoryClick = { onLogVictory() },
-                            onRelapseClick = {
+                            state            = state,
+                            onPanicClick     = { showPanicModal = true },
+                            onVictoryClick   = { onLogVictory() },
+                            onRelapseClick   = {
                                 trollMessage = trollMessages.random()
                                 showRelapseModal = true
-                            }
+                            },
+                            // Wire saveConfession through to ViewModel
+                            onSaveConfession = { text -> vm.saveConfession(text) }  // ← NEW
                         )
                         ViewState.LEADERBOARD -> LeaderboardScreen(
                             regionalBoard = regionalBoard,
                             globalBoard   = globalBoard,
                             userRegion    = state.userProfile.region,
-                            getBotProfile = getBotProfile
+                            getBotProfile = getBotProfile,
+                            myStreak      = state.streak,         // ← NEW
+                            rivalStreak   = state.bestStreak,     // ← NEW (ghost = personal best)
                         )
                         ViewState.ANALYSIS -> AnalysisScreen(state = state)
                         ViewState.ARCHIVE  -> ArchiveScreen(state = state)
