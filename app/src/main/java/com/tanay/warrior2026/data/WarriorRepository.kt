@@ -44,6 +44,7 @@ class WarriorRepository(private val context: Context) {
         // v4.0.0 multi-habit
         val HABITS_JSON         = stringPreferencesKey("w_habits_v9")
         val ACTIVE_HABIT_ID     = stringPreferencesKey("w_active_habit_v9")
+        val LAST_CONFESSION     = stringPreferencesKey("w_last_confession_v9")
     }
 
     val warriorStateFlow: Flow<WarriorState> = context.dataStore.data.map { prefs ->
@@ -77,13 +78,15 @@ class WarriorRepository(private val context: Context) {
         val resolvedActiveId = if (habits.any { it.id == activeHabitId }) activeHabitId
                                else habits.firstOrNull()?.id ?: ""
 
-        WarriorState(habits, resolvedActiveId, onboarded, userProfile, profileDone, botsJson)
+        val lastConfession = prefs[Keys.LAST_CONFESSION]
+        WarriorState(habits, resolvedActiveId, onboarded, userProfile, profileDone, botsJson, lastConfession)
     }
 
     suspend fun saveState(state: WarriorState) {
         context.dataStore.edit { prefs ->
             prefs[Keys.HABITS_JSON]      = Json.encodeToString(state.habits)
             prefs[Keys.ACTIVE_HABIT_ID]  = state.activeHabitId
+            state.lastConfession?.let { prefs[Keys.LAST_CONFESSION] = it }
             prefs[Keys.ONBOARDING]       = state.hasCompletedOnboarding
             prefs[Keys.USER_PROFILE]     = Json.encodeToString(state.userProfile)
             prefs[Keys.PROFILE_COMPLETE] = state.hasCompletedProfile
