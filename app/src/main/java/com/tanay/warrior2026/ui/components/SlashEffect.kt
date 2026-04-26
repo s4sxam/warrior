@@ -1,6 +1,6 @@
 package com.tanay.warrior.ui.components
 
-import androidx.compose.animation.core.withFrameMillis
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
