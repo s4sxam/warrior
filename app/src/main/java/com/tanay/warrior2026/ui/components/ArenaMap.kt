@@ -286,7 +286,7 @@ private fun MapGridBackground(modifier: Modifier = Modifier) {
         // Outer frame
         drawRect(
             color       = MapBorder,
-            style       = Stroke(strokeWidth = 1.2f),
+            style       = Stroke(width = 1.2f),
         )
     }
 }
