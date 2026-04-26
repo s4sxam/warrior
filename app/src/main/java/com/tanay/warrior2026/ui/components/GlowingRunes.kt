@@ -103,7 +103,7 @@ private fun DrawScope.drawRuneThorn(strokePx: Float, color: Color) {
         lineTo(w * pad, h * (1f - pad))        // bottom-left
         close()
     }
-    drawPath(path, color = color, style = Stroke(strokeWidth = strokePx, join = StrokeJoin.Miter))
+    drawPath(path, color = color, style = Stroke(width = strokePx, join = StrokeJoin.Miter))
 
     // Vertical centre line from notch up
     drawLine(
@@ -145,7 +145,7 @@ private fun DrawScope.drawRuneSigil(strokePx: Float, color: Color) {
         lineTo(w * pad,          cy)
         close()
     }
-    drawPath(path, color = color, style = Stroke(strokeWidth = strokePx, join = StrokeJoin.Miter))
+    drawPath(path, color = color, style = Stroke(width = strokePx, join = StrokeJoin.Miter))
     // Horizontal cross bar
     drawLine(color, Offset(w * pad, cy), Offset(w * (1f - pad), cy), strokePx, cap = StrokeCap.Round)
     // Vertical cross bar
@@ -165,7 +165,7 @@ private fun DrawScope.drawRuneVeil(strokePx: Float, color: Color) {
             w * 0.86f, h * 0.50f,
         )
     }
-    drawPath(outerPath, color = color, style = Stroke(strokeWidth = strokePx, cap = StrokeCap.Round))
+    drawPath(outerPath, color = color, style = Stroke(width = strokePx, cap = StrokeCap.Round))
     // Inner arc (bottom-open eye)
     val innerPath = Path().apply {
         moveTo(w * 0.14f, h * 0.50f)
@@ -175,7 +175,7 @@ private fun DrawScope.drawRuneVeil(strokePx: Float, color: Color) {
             w * 0.86f, h * 0.50f,
         )
     }
-    drawPath(innerPath, color = color, style = Stroke(strokeWidth = strokePx, cap = StrokeCap.Round))
+    drawPath(innerPath, color = color, style = Stroke(width = strokePx, cap = StrokeCap.Round))
     // Centre pupil dot
     drawCircle(color = color, radius = strokePx * 1.4f, center = Offset(cx, h / 2f))
 }
@@ -215,7 +215,7 @@ private fun DrawScope.drawRuneAegis(strokePx: Float, color: Color) {
         }
         close()
     }
-    drawPath(path, color = color, style = Stroke(strokeWidth = strokePx, join = StrokeJoin.Round))
+    drawPath(path, color = color, style = Stroke(width = strokePx, join = StrokeJoin.Round))
     // Centre dot
     drawCircle(color = color, radius = strokePx * 1.6f, center = Offset(cx, cy))
     // Cardinal spokes
@@ -323,7 +323,7 @@ fun GlowingHabitRune(
                             color  = ArenaBlue.copy(alpha = glowAlpha * 0.55f),
                             radius = radius * 0.82f,
                             center = Offset(cx, cy),
-                            style  = Stroke(strokeWidth = 2.5f + 2.5f * glowPulse),
+                            style  = Stroke(width = 2.5f + 2.5f * glowPulse),
                         )
                     }
                 }
