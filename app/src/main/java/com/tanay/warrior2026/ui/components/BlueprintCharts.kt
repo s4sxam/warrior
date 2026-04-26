@@ -167,7 +167,7 @@ private fun DrawScope.drawWireframeBar(
         color       = ArenaBlue.copy(alpha = 0.10f),
         topLeft     = Offset(rect.left,  rect.top),
         size        = Size(rect.width,   rect.height),
-        style       = Stroke(strokeWidth = HALO_STROKE_PX),
+        style       = Stroke(width = HALO_STROKE_PX),
     )
 
     // Outer wireframe rect
@@ -175,7 +175,7 @@ private fun DrawScope.drawWireframeBar(
         color       = ArenaBlue.copy(alpha = 0.90f),
         topLeft     = Offset(rect.left,  rect.top),
         size        = Size(rect.width,   rect.height),
-        style       = Stroke(strokeWidth = BAR_STROKE_PX),
+        style       = Stroke(width = BAR_STROKE_PX),
     )
 
     // Corner tick marks — military drafting L-shapes at all 4 corners
