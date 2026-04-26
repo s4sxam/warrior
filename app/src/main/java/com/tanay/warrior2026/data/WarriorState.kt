@@ -115,4 +115,4 @@ data class WarriorState(
     val primaryHabit: Habit? get() = habits.firstOrNull()
 }
 
-enum class ViewState { DASHBOARD, ANALYSIS, ARCHIVE, ABOUT, LEADERBOARD, HABITS } }
+enum class ViewState { DASHBOARD, ANALYSIS, ARCHIVE, ABOUT, LEADERBOARD, HABITS }
