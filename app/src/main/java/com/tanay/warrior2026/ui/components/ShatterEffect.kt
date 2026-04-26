@@ -1,6 +1,6 @@
 package com.tanay.warrior.ui.components
 
-import androidx.compose.animation.core.withFrameMillis
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
@@ -130,7 +130,7 @@ private fun DrawScope.drawShard(shard: Shard, tSec: Float, alphaMul: Float) {
     drawPath(
         path  = path,
         color = Color.White.copy(alpha = shard.baseAlpha * alphaMul * 0.75f),
-        style = androidx.compose.ui.graphics.drawscope.Stroke(strokeWidth = 1.5f),
+        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5f),
     )
 }
 
