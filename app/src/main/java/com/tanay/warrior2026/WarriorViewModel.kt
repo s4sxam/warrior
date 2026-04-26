@@ -357,6 +357,12 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
 
     fun clearConfetti() { _showConfetti.value = false }
 
+    fun saveConfession(text: String) {
+        if (text.isBlank()) return
+        _state.update { it.copy(lastConfession = text.trim()) }
+        viewModelScope.launch { repo.saveState(_state.value) }
+    }
+
     fun exportJson(): String = repo.exportJson(_state.value)
 
     fun importJson(json: String): Boolean {
