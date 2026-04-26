@@ -43,6 +43,10 @@ import com.tanay.warrior.ui.components.LiveRivalCard
 import com.tanay.warrior.ui.theme.*
 import java.time.LocalDate
 
+// Helper — converts a WarriorRegion.name string to its display name
+private fun regionDisplayName(regionName: String): String =
+    WarriorRegion.entries.firstOrNull { it.name == regionName }?.displayName ?: regionName
+
 @Composable
 fun LeaderboardScreen(
     regionalBoard: List<BotSimulator.LeaderboardEntry>,
