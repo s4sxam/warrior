@@ -1,7 +1,9 @@
 package com.tanay.warrior.ui.screens
 
-// [NEW] v4.0.0: Multi-habit management screen.
-// Shows all habits as cards; lets the user add, switch, rename, and delete habits.
+// [UPDATE] v5.0.0: Replaced habit emoji tiles with GlowingHabitRune vector runes.
+// Rune ignites (glow + pulse) when the habit is the active habit for today.
+// The emoji picker in the Add/Edit dialog is kept for stored metadata but
+// the card display now shows the rune symbol instead of the emoji.
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -27,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import com.tanay.warrior.WarriorViewModel
 import com.tanay.warrior.data.Habit
 import com.tanay.warrior.data.WarriorState
+import com.tanay.warrior.ui.components.GlowingHabitRune  // ← NEW
 
 private val Red       = Color(0xFFCC0000)
 private val DarkBg    = Color(0xFF0D0D0D)
@@ -51,7 +54,7 @@ fun HabitsScreen(
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
 
-            // ── Header ────────────────────────────────────────────────────────
+            // ── Header ──────────────────────────────────────────────────────
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -83,7 +86,7 @@ fun HabitsScreen(
                 modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp)
             )
 
-            // ── Habit list ────────────────────────────────────────────────────
+            // ── Habit list ───────────────────────────────────────────────
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -106,7 +109,7 @@ fun HabitsScreen(
         }
     }
 
-    // ── Add habit dialog ──────────────────────────────────────────────────────
+    // ── Add habit dialog ──────────────────────────────────────────────────
     if (showAddDialog) {
         HabitEditDialog(
             title      = "NEW HABIT",
@@ -119,7 +122,7 @@ fun HabitsScreen(
         )
     }
 
-    // ── Edit habit dialog ─────────────────────────────────────────────────────
+    // ── Edit habit dialog ─────────────────────────────────────────────────
     editHabit?.let { habit ->
         HabitEditDialog(
             title      = "EDIT HABIT",
@@ -132,7 +135,7 @@ fun HabitsScreen(
         )
     }
 
-    // ── Delete confirmation ───────────────────────────────────────────────────
+    // ── Delete confirmation ───────────────────────────────────────────────
     confirmDeleteId?.let { id ->
         val habit = state.habits.find { it.id == id }
         AlertDialog(
@@ -166,6 +169,8 @@ fun HabitsScreen(
 }
 
 // ── Habit Card ────────────────────────────────────────────────────────────────
+// [CHANGED] v5.0.0: Left slot now renders GlowingHabitRune instead of a
+// plain emoji Text. The rune ignites (glow + border pulse) when isActive=true.
 
 @Composable
 private fun HabitCard(
@@ -183,16 +188,25 @@ private fun HabitCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(CardBg)
-            .border(width = if (isActive) 1.5.dp else 1.dp,
-                    color = borderColor,
-                    shape = RoundedCornerShape(12.dp))
+            .border(
+                width = if (isActive) 1.5.dp else 1.dp,
+                color = borderColor,
+                shape = RoundedCornerShape(12.dp)
+            )
             .clickable { onSelect() }
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Emoji
-        Text(text = habit.emoji, fontSize = 28.sp,
-             modifier = Modifier.padding(end = 14.dp))
+
+        // ── [NEW] Glowing rune replaces emoji ─────────────────
+        // The rune shape is seeded from habit.name (same as GlowingHabitRune
+        // internally uses label.hashCode). isActive drives the ignition effect.
+        GlowingHabitRune(
+            label    = habit.name,
+            isActive = isActive,
+            tileSize = 52.dp,
+            modifier = Modifier.padding(end = 12.dp),
+        )
 
         // Name + stats
         Column(modifier = Modifier.weight(1f)) {
@@ -218,7 +232,9 @@ private fun HabitCard(
                 imageVector = Icons.Filled.CheckCircle,
                 contentDescription = "Active",
                 tint = GreenDay,
-                modifier = Modifier.size(20.dp).padding(start = 4.dp)
+                modifier = Modifier
+                    .size(20.dp)
+                    .padding(start = 4.dp)
             )
         }
 
@@ -246,6 +262,8 @@ private fun StatChip(text: String) {
 }
 
 // ── Add / Edit dialog ─────────────────────────────────────────────────────────
+// Emoji picker is kept in the dialog — the emoji is stored in Habit.emoji for
+// future use (notifications, widgets) even though the card now shows a rune.
 
 private val EMOJI_OPTIONS = listOf(
     "🔥","💪","🧠","❤️","🚭","🍺","📵","💊","🎮","🍔","😴","🏃","📖","✍️","🧘"
@@ -288,8 +306,43 @@ private fun HabitEditDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                // Emoji picker
-                Text("Choose icon", color = TextSec, fontSize = 12.sp)
+                // Rune preview (shows what the card will look like)
+                if (name.isNotBlank()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF111111))
+                            .border(1.dp, Color(0xFF2A2A2A), RoundedCornerShape(10.dp))
+                            .padding(12.dp)
+                    ) {
+                        GlowingHabitRune(
+                            label    = name,
+                            isActive = true,
+                            tileSize = 48.dp,
+                        )
+                        Column {
+                            Text(
+                                "RUNE PREVIEW",
+                                fontSize = 8.sp,
+                                color = TextSec,
+                                fontWeight = FontWeight.ExtraBold,
+                                letterSpacing = 2.sp,
+                            )
+                            Text(
+                                "This rune appears on your habit card.",
+                                fontSize = 11.sp,
+                                color = TextSec,
+                                lineHeight = 16.sp,
+                            )
+                        }
+                    }
+                }
+
+                // Emoji picker (kept for metadata / notifications)
+                Text("Choose icon (used in notifications)", color = TextSec, fontSize = 12.sp)
                 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
                 androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
                     columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(5),
