@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.sp
 import com.tanay.warrior.data.WarriorState
 import com.tanay.warrior.ui.theme.*
 import com.tanay.warrior.ui.components.BlackoutOverlay
-import com.tanay.warrior.ui.components.CharacterGuild.WarriorRankCard
+import com.tanay.warrior.ui.components.WarriorRankCard
 import com.tanay.warrior.ui.components.ConfessionalSheet
 import com.tanay.warrior.ui.components.EvolvingStreakNumber
 import com.tanay.warrior.ui.components.GlitchOverlay
