@@ -68,7 +68,7 @@ private fun DrawScope.drawGrid(radius: Float, cx: Float, cy: Float) {
             color       = GridColor.copy(alpha = GRID_ALPHA),
             radius      = r,
             center      = center,
-            style       = Stroke(strokeWidth = GRID_STROKE),
+            style       = Stroke(width = GRID_STROKE),
         )
     }
 
