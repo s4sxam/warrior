@@ -2,6 +2,7 @@ package com.tanay.warrior.ui.components
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,26 +16,33 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 // ── EvolvingText.kt ───────────────────────────────────────────
-// Evolving Typography — v1.0.0
+// Evolving Typography — v2.0.0
 //
 // Stages:
-//   Day  0–6    BROKEN     FontWeight.Thin,      dimmed rust-grey
-//                          Subtle random flicker (alpha jitter)
-//                          Conveys defeat, fragility
+//   Day  0      SCRATCH    FontWeight.Thin, near-invisible grey
+//                          Rapid jitter flicker — raw, unstable signal
+//                          "Scratch marks in the dirt"
 //
-//   Day  7–29   SOLDIER    FontWeight.SemiBold,  iron-red
+//   Day  1–6    BROKEN     FontWeight.Thin, dimmed rust-grey
+//                          Slow alpha flicker — dying signal
+//
+//   Day  7–29   SOLDIER    FontWeight.SemiBold, iron-red
 //                          No animation — steady, reliable
 //
-//   Day 30–89   ELITE      FontWeight.Bold,      steel-blue
+//   Day 30–89   ELITE      FontWeight.Bold, steel-blue
 //                          Slight letter spacing (4sp)
-//                          No animation — disciplined, controlled
 //
-//   Day 90+     LEGEND     FontWeight.ExtraBold, battle-gold
-//                          Shimmer: a moving highlight sweep across the text
-//                          Implemented via drawWithContent + animated gradient
+//   Day 90–99   LEGEND     FontWeight.ExtraBold, battle-gold
+//                          Shimmer sweep across glyphs
+//
+//   Day 100+    CARVED_STONE FontWeight.Black, warm stone-gold
+//                          No movement — immovable, permanent
+//                          Subtle embossed shadow via two offset draws
+//                          "Carved in stone — this number is permanent"
 //
 // Public API:
 //   EvolvingStreakNumber(streak: Int, modifier: Modifier = Modifier)
@@ -52,23 +60,56 @@ import androidx.compose.ui.unit.sp
 
 // ── Colors ────────────────────────────────────────────────────
 
+private val ScratchColor = Color(0xFF2A2020)   // near-invisible charcoal
 private val BrokenColor  = Color(0xFF4A3A32)   // dim rust-grey
 private val SoldierColor = Color(0xFFB22222)   // iron-red
 private val EliteColor   = Color(0xFF8BAFC4)   // steel-blue
 private val LegendColor  = Color(0xFFFFD700)   // battle-gold
+private val StoneColor   = Color(0xFFD4A96A)   // warm carved stone
+private val StoneShadow  = Color(0xFF1A0E00)   // deep shadow for emboss
 
 // ── Stage config ──────────────────────────────────────────────
 
-private enum class TextStage { BROKEN, SOLDIER, ELITE, LEGEND }
+private enum class TextStage { SCRATCH, BROKEN, SOLDIER, ELITE, LEGEND, CARVED_STONE }
 
 private fun stageFor(streak: Int): TextStage = when {
-    streak < 7  -> TextStage.BROKEN
-    streak < 30 -> TextStage.SOLDIER
-    streak < 90 -> TextStage.ELITE
-    else        -> TextStage.LEGEND
+    streak == 0  -> TextStage.SCRATCH
+    streak < 7   -> TextStage.BROKEN
+    streak < 30  -> TextStage.SOLDIER
+    streak < 90  -> TextStage.ELITE
+    streak < 100 -> TextStage.LEGEND
+    else         -> TextStage.CARVED_STONE
 }
 
 // ── Stage composables ─────────────────────────────────────────
+
+/**
+ * SCRATCH — Day 0. Near-invisible rapid jitter. The number barely exists.
+ * Fast flicker (400ms) between near-zero alphas — an unstable signal,
+ * scratch marks in the dirt.
+ */
+@Composable
+private fun ScratchNumber(text: String, fontSize: TextUnit, modifier: Modifier) {
+    val inf = rememberInfiniteTransition(label = "scratch")
+    val jitter by inf.animateFloat(
+        initialValue  = 0.08f,
+        targetValue   = 0.28f,
+        animationSpec = infiniteRepeatable(
+            animation  = tween(400, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "jitter",
+    )
+    Text(
+        text          = text,
+        fontSize      = fontSize,
+        fontWeight    = FontWeight.Thin,
+        color         = ScratchColor.copy(alpha = jitter),
+        textAlign     = TextAlign.Center,
+        letterSpacing = 0.sp,
+        modifier      = modifier,
+    )
+}
 
 /**
  * BROKEN — thin, dimmed, low-frequency alpha flicker.
@@ -206,6 +247,39 @@ private fun LegendNumber(text: String, fontSize: TextUnit, modifier: Modifier) {
 // ── Public composable ─────────────────────────────────────────
 
 /**
+ * CARVED_STONE — Day 100+. Immovable. No animation whatsoever.
+ * The number is permanent — carved into stone.
+ *
+ * Achieved via two overlapping Text layers offset by 2px down-right
+ * for a shadow-emboss feel, as if chiselled into rock.
+ * The shadow layer uses StoneShadow; the face layer uses StoneColor.
+ */
+@Composable
+private fun CarvedStoneNumber(text: String, fontSize: TextUnit, modifier: Modifier) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        // Shadow layer — offset to bottom-right for carved depth
+        Text(
+            text          = text,
+            fontSize      = fontSize,
+            fontWeight    = FontWeight.Black,
+            color         = StoneShadow,
+            textAlign     = TextAlign.Center,
+            letterSpacing = 3.sp,
+            modifier      = Modifier.offset(x = 2.dp, y = 2.dp),
+        )
+        // Face layer
+        Text(
+            text          = text,
+            fontSize      = fontSize,
+            fontWeight    = FontWeight.Black,
+            color         = StoneColor,
+            textAlign     = TextAlign.Center,
+            letterSpacing = 3.sp,
+        )
+    }
+}
+
+/**
  * Displays [streak] as a large number whose typography evolves
  * with the warrior's rank.
  *
@@ -221,16 +295,21 @@ fun EvolvingStreakNumber(
 ) {
     val stage = stageFor(streak)
 
-    // LEGEND gets a slightly larger font to reinforce its status
-    val effectiveFontSize = if (stage == TextStage.LEGEND) (fontSize.value * 1.125f).sp
-                            else fontSize
+    // LEGEND/CARVED_STONE get slightly larger font to reinforce status
+    val effectiveFontSize = when (stage) {
+        TextStage.LEGEND       -> (fontSize.value * 1.125f).sp
+        TextStage.CARVED_STONE -> (fontSize.value * 1.15f).sp
+        else                   -> fontSize
+    }
 
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         when (stage) {
-            TextStage.BROKEN  -> BrokenNumber ("$streak", effectiveFontSize, Modifier)
-            TextStage.SOLDIER -> SoldierNumber("$streak", effectiveFontSize, Modifier)
-            TextStage.ELITE   -> EliteNumber  ("$streak", effectiveFontSize, Modifier)
-            TextStage.LEGEND  -> LegendNumber ("$streak", effectiveFontSize, Modifier)
+            TextStage.SCRATCH       -> ScratchNumber    ("$streak", effectiveFontSize, Modifier)
+            TextStage.BROKEN        -> BrokenNumber     ("$streak", effectiveFontSize, Modifier)
+            TextStage.SOLDIER       -> SoldierNumber    ("$streak", effectiveFontSize, Modifier)
+            TextStage.ELITE         -> EliteNumber      ("$streak", effectiveFontSize, Modifier)
+            TextStage.LEGEND        -> LegendNumber     ("$streak", effectiveFontSize, Modifier)
+            TextStage.CARVED_STONE  -> CarvedStoneNumber("$streak", effectiveFontSize, Modifier)
         }
     }
 }
