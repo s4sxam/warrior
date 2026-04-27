@@ -71,7 +71,7 @@ private fun rankFor(streak: Int): RankConfig = when {
     streak < 7  -> RankConfig(
         title       = "RECRUIT",
         subtitle    = "The fall broke you. Rise anyway.",
-        icon        = "☠",
+        icon        = "🗡",
         borderColor = RustRed.copy(alpha = 0.5f),
         glowColor   = RustRed,
         badgeBg     = RustDim,
