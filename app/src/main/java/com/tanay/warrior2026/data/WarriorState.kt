@@ -65,6 +65,35 @@ data class Habit(
     val totalClean:  Int get() = history.values.count { it.status == "clean" }
     val totalFailed: Int get() = history.values.count { it.status == "failed" }
 
+    /**
+     * The most recently completed streak before the current one.
+     * Used as the Live Rival ghost — you race your actual past self, not just your best.
+     *
+     * Algorithm: walk the history in chronological order, collect completed streaks
+     * (runs of consecutive clean days that end with a failure or a gap), return
+     * the second-to-last one. Falls back to bestStreak if only one streak exists.
+     */
+    val previousStreak: Int get() {
+        val sorted = history.entries.sortedBy { it.key }
+        val completedStreaks = mutableListOf<Int>()
+        var run = 0
+        sorted.forEach { (_, d) ->
+            if (d.status == "clean") {
+                run++
+            } else {
+                if (run > 0) completedStreaks.add(run)
+                run = 0
+            }
+        }
+        // If current run is ongoing (today is clean), don't count it as completed
+        // — it's the active streak we're beating, not a ghost.
+        return when {
+            completedStreaks.size >= 2 -> completedStreaks[completedStreaks.size - 2]
+            completedStreaks.size == 1 -> completedStreaks[0]
+            else                       -> bestStreak
+        }
+    }
+
     fun isTodayLogged(): Boolean = history.containsKey(todayKey())
 
     val points: Int get() {
@@ -103,8 +132,9 @@ data class WarriorState(
     val history:  Map<String, DayData> get() = activeHabit?.history  ?: emptyMap()
     val triggers: Map<String, Int>     get() = activeHabit?.triggers ?: emptyMap()
 
-    val streak:      Int get() = activeHabit?.streak      ?: 0
-    val bestStreak:  Int get() = activeHabit?.bestStreak  ?: 0
+    val streak:      Int get() = activeHabit?.streak         ?: 0
+    val bestStreak:  Int get() = activeHabit?.bestStreak     ?: 0
+    val previousStreak: Int get() = activeHabit?.previousStreak ?: 0
     val totalClean:  Int get() = activeHabit?.totalClean  ?: 0
     val totalFailed: Int get() = activeHabit?.totalFailed ?: 0
     val userPoints:  Int get() = activeHabit?.points      ?: 0
