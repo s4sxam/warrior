@@ -132,11 +132,23 @@ fun DashboardScreen(
         )
 
         // ── Scrollable content ─────────────────────────────────────────────
+        // [FIX] Overlay alpha was hardcoded 0.72f (very dark regardless of system
+        // brightness). Now adapts to streak tier so the War Room background breathes:
+        //   Day 0–9   → 0.55f  (digital rain shows through clearly)
+        //   Day 10–29 → 0.58f  (transition, first embers bleeding in)
+        //   Day 30+   → 0.62f  (embers glow richly behind content)
+        //   Day 90+   → 0.60f  (legend — max particle brightness wins)
+        val overlayAlpha = when {
+            streakAnim >= 90 -> 0.60f
+            streakAnim >= 30 -> 0.62f
+            streakAnim >= 10 -> 0.58f
+            else             -> 0.55f
+        }
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 // Semi-transparent surface so background particles show through
-                .background(BgBlack.copy(alpha = 0.72f))
+                .background(BgBlack.copy(alpha = overlayAlpha))
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 28.dp),
