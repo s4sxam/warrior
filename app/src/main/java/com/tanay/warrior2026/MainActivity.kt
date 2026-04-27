@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
@@ -314,7 +315,8 @@ fun WarriorApp(
                 current      = currentView,
                 fingerX      = fingerX,
                 onFingerMove = { fingerX = it },
-                onSelect     = { currentView = it }
+                onSelect     = { currentView = it },
+                streak       = state.streak
             )
         }
     ) { innerPadding ->
@@ -355,8 +357,8 @@ fun WarriorApp(
                             globalBoard   = globalBoard,
                             userRegion    = state.userProfile.region,
                             getBotProfile = getBotProfile,
-                            myStreak      = state.streak,         // ← NEW
-                            rivalStreak   = state.bestStreak,     // ← NEW (ghost = personal best)
+                            myStreak      = state.streak,
+                            rivalStreak   = state.previousStreak,   // ← ghost = previous streak, not best
                         )
                         ViewState.ANALYSIS -> AnalysisScreen(state = state)
                         ViewState.ARCHIVE  -> ArchiveScreen(state = state)
@@ -397,8 +399,12 @@ fun WarriorMagnifiedDock(
     current: ViewState,
     fingerX: Float,
     onFingerMove: (Float) -> Unit,
-    onSelect: (ViewState) -> Unit
+    onSelect: (ViewState) -> Unit,
+    streak: Int = 0
 ) {
+    // Items unlocked progressively as streak grows:
+    //   ANALYSIS, ARCHIVE, LEADERBOARD → dim at Day 0, fully unlocked by Day 7
+    val lockedViews = setOf(ViewState.ANALYSIS, ViewState.ARCHIVE, ViewState.LEADERBOARD)
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -424,11 +430,14 @@ fun WarriorMagnifiedDock(
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             items.forEach { item ->
+                // Locked items fade to 30% opacity until Day 7 streak is reached
+                val isLocked = item.view in lockedViews && streak < 7
                 MagnifiedDockItem(
                     item       = item,
                     isSelected = current == item.view,
                     fingerX    = fingerX,
-                    onClick    = { onSelect(item.view) }
+                    onClick    = { onSelect(item.view) },
+                    lockAlpha  = if (isLocked) 0.28f + (streak / 7f) * 0.72f else 1f
                 )
             }
         }
@@ -440,7 +449,8 @@ fun MagnifiedDockItem(
     item: NavItem,
     isSelected: Boolean,
     fingerX: Float,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    lockAlpha: Float = 1f
 ) {
     var itemCenterX by remember { mutableStateOf(0f) }
     val distance = if (fingerX == -1f) Float.MAX_VALUE else abs(fingerX - itemCenterX)
@@ -455,12 +465,19 @@ fun MagnifiedDockItem(
         label         = "scale"
     )
 
+    val animLockAlpha by animateFloatAsState(
+        targetValue   = lockAlpha,
+        animationSpec = tween(600),
+        label         = "lockAlpha"
+    )
+
     Column(
         modifier = Modifier
             .onGloballyPositioned { coords ->
                 itemCenterX = coords.positionInParent().x + (coords.size.width / 2)
             }
             .scale(scale)
+            .graphicsLayer { alpha = animLockAlpha }
             .width(48.dp)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
