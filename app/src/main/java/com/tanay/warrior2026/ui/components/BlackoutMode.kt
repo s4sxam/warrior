@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -45,6 +46,30 @@ import androidx.compose.ui.graphics.Color
 private const val MAX_ALPHA   = 0.55f   // darkness at Day 0
 private const val CLEAR_DAY   = 30      // streak at which overlay is fully gone
 private const val ANIM_MS     = 600     // ms for each alpha transition
+
+/**
+ * Returns a 0f–1f degradation factor for blackout-aware UI elements.
+ *
+ * 0f = fully unlocked (streak >= [unlockDay])
+ * 1f = fully locked/degraded (streak == 0)
+ *
+ * Use this to fade, blur, or dim individual UI elements as streak grows.
+ * unlockDay lets different features unlock at different milestones.
+ */
+fun blackoutFactor(streak: Int, unlockDay: Int = CLEAR_DAY): Float =
+    (1f - streak.coerceIn(0, unlockDay).toFloat() / unlockDay).coerceIn(0f, 1f)
+
+/**
+ * Animates the blackout degradation factor for use in Composables.
+ * Returns a [State]<[Float]> from 1f (full degradation) → 0f (fully unlocked).
+ */
+@Composable
+fun rememberBlackoutFactor(streak: Int, unlockDay: Int = CLEAR_DAY): State<Float> =
+    animateFloatAsState(
+        targetValue   = blackoutFactor(streak, unlockDay),
+        animationSpec = tween(durationMillis = ANIM_MS),
+        label         = "blackoutFactor",
+    )
 
 /**
  * Renders a full-screen black overlay whose opacity is driven by [streak].
