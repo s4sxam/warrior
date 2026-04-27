@@ -21,6 +21,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tanay.warrior.data.WarriorState
+import com.tanay.warrior.ui.components.BlueprintBarChart
 import com.tanay.warrior.ui.theme.*
 import java.time.LocalDate
 import java.time.Month
@@ -127,13 +128,19 @@ fun AnalysisScreen(state: WarriorState) {
 
         Spacer(Modifier.height(20.dp))
 
-        // ── Monthly bar chart ──
+        // ── Monthly bar chart — Blueprint wireframe style ──
         if (monthsData.isNotEmpty()) {
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Text("MONTHLY VICTORIES", fontSize = 10.sp, color = TextSecondary,
                     fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
                 Spacer(Modifier.height(16.dp))
-                MonthlyBarChart(months = monthsData)
+                BlueprintBarChart(
+                    data = monthsData.map { m ->
+                        m.month.getDisplayName(TextStyle.SHORT, Locale.US).uppercase() to
+                            m.victories.toFloat()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
 
