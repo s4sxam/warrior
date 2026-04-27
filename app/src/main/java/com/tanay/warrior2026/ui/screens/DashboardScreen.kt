@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -296,9 +297,14 @@ fun DashboardScreen(
     }
 }
 
-// ── Streak hero with animated ring color ──────────────────────────────────────
-// [UPDATED v5.0.0] ringColor now comes from rememberStreakRingColor() which
-// animates smoothly: rusty iron (Day 0) → steel blue (Day 30) → radiant gold (Day 90+)
+// ── Streak hero with animated ring color + breathing pulse ───────────────────
+// [UPDATED v5.0.0] ringColor from rememberStreakRingColor()
+// [NEW v6.0.0] Breathing ring: InfiniteTransition drives stroke-width + alpha pulse.
+//   The longer your streak, the slower and calmer the heartbeat:
+//     Day 0–6   → 900ms  (anxious, fast)
+//     Day 7–29  → 1400ms (settling)
+//     Day 30–89 → 2000ms (disciplined, steady)
+//     Day 90+   → 3000ms (legendary calm)
 
 @Composable
 private fun StreakHero(streak: Int, best: Int, todayStatus: String?) {
@@ -309,9 +315,34 @@ private fun StreakHero(streak: Int, best: Int, todayStatus: String?) {
         label         = "ring"
     )
 
-    // [NEW v5.0.0] Animated ring color replacing the hardcoded when-block.
-    // Milestones: Day 0 = dim iron, Day 30 = steel blue, Day 90 = radiant gold.
     val ringColor by rememberStreakRingColor(streak = streak)
+
+    // ── Breathing ring ────────────────────────────────────────────────────────
+    val breathPeriodMs = when {
+        streak >= 90 -> 3000
+        streak >= 30 -> 2000
+        streak >= 7  -> 1400
+        else         -> 900
+    }
+    val breathInf = rememberInfiniteTransition(label = "breathe")
+    val breathScale by breathInf.animateFloat(
+        initialValue  = 1f,
+        targetValue   = 1.055f,
+        animationSpec = infiniteRepeatable(
+            animation  = tween(breathPeriodMs, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "breathScale",
+    )
+    val breathAlpha by breathInf.animateFloat(
+        initialValue  = 0.65f,
+        targetValue   = 1.00f,
+        animationSpec = infiniteRepeatable(
+            animation  = tween(breathPeriodMs, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "breathAlpha",
+    )
 
     Box(
         modifier = Modifier
@@ -335,6 +366,27 @@ private fun StreakHero(streak: Int, best: Int, todayStatus: String?) {
             ) {
                 HoloRadarRing(modifier = Modifier.fillMaxSize())
 
+                // Breathing outer glow ring — scales with breathScale
+                androidx.compose.foundation.Canvas(
+                    modifier = Modifier
+                        .size(120.dp)
+                        .graphicsLayer {
+                            scaleX = breathScale
+                            scaleY = breathScale
+                        }
+                ) {
+                    val glowStroke = 18.dp.toPx()
+                    val glowInset  = glowStroke / 2f
+                    drawArc(
+                        color      = ringColor.copy(alpha = breathAlpha * 0.18f),
+                        startAngle = -90f, sweepAngle = 360f * animRing,
+                        useCenter  = false,
+                        topLeft    = Offset(glowInset, glowInset),
+                        size       = Size(size.width - glowStroke, size.height - glowStroke),
+                        style      = Stroke(glowStroke, cap = StrokeCap.Round)
+                    )
+                }
+
                 androidx.compose.foundation.Canvas(modifier = Modifier.size(120.dp)) {
                     val stroke = 10.dp.toPx()
                     val inset  = stroke / 2f
@@ -347,9 +399,9 @@ private fun StreakHero(streak: Int, best: Int, todayStatus: String?) {
                         size       = Size(size.width - stroke, size.height - stroke),
                         style      = Stroke(stroke, cap = StrokeCap.Round)
                     )
-                    // Progress arc — color animates via rememberStreakRingColor
+                    // Progress arc — breathAlpha drives the pulse intensity
                     drawArc(
-                        color      = ringColor,
+                        color      = ringColor.copy(alpha = breathAlpha),
                         startAngle = -90f, sweepAngle = 360f * animRing,
                         useCenter  = false,
                         topLeft    = Offset(inset, inset),
