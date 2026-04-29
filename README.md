@@ -293,8 +293,8 @@ The roadmap stays lean. Every feature added has to earn its place.
 
 **Build it yourself:**
 ```bash
-git clone https://github.com/s4sxam/warrior2026.git
-cd warrior2026
+git clone https://github.com/s4sxam/warrior.git
+cd warrior
 ./gradlew assembleDebug
 ```
 Requires Android Studio + JDK 11 + SDK 35.
@@ -313,7 +313,7 @@ Issues, ideas, and PRs are open. If you fix a bug or build something from the ro
 
 <div align="center">
 
-**Built by [Tanay (s3sxam) ](https://github.com/s4sxam) · India**
+**Built by [Tanay (s4sxam) ](https://github.com/s4sxam) · India**
 
 *One clean day at a time.*
 
