@@ -1,32 +1,26 @@
 package com.tanay.warrior.ui.screens
 
-// ─────────────────────────────────────────────────────────────────
-// AnalysisScreen.kt  — v6.0.0 (Redesign)
-//
-// CHANGES:
-//   • One clear primary insight at the top: win rate + streak quality
-//   • Removed duplicate stat cards that echo the dashboard
-//   • Month chart kept — it's unique to this screen
-//   • Trigger analysis kept — actionable data
-//   • Reduced on-screen info by ~50% (fixes issue #7)
-//   • Header consistent with other screens
-// ─────────────────────────────────────────────────────────────────
-
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tanay.warrior.data.WarriorState
-import com.tanay.warrior.ui.components.BlueprintBarChart
 import com.tanay.warrior.ui.theme.*
 import java.time.LocalDate
 import java.time.Month
@@ -34,21 +28,24 @@ import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
 
-// ── Data ──────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// DATA MODELS
+// ─────────────────────────────────────────────────────────────
 private data class MonthStats(
-    val month:       Month,
-    val year:        Int,
-    val victories:   Int,
-    val defeats:     Int,
-    val logged:      Int,
-    val consistency: Int,  // 0–100
+    val month: Month,
+    val year: Int,
+    val victories: Int,
+    val defeats: Int,
+    val logged: Int,
+    val consistency: Int  // 0–100
 )
 
 private fun buildMonthStats(state: WarriorState): List<MonthStats> {
     val fmt = DateTimeFormatter.ISO_LOCAL_DATE
     val now = LocalDate.now()
-    return (0..5).reversed().mapNotNull { offset ->
-        val target      = now.minusMonths(offset.toLong())
+
+    return (0..5).reversed().mapNotNull { monthOffset ->
+        val target = now.minusMonths(monthOffset.toLong())
         val daysInMonth = target.month.length(target.isLeapYear)
         var v = 0; var d = 0
         (1..daysInMonth).forEach { day ->
@@ -60,13 +57,34 @@ private fun buildMonthStats(state: WarriorState): List<MonthStats> {
         }
         if (v + d == 0) null
         else MonthStats(
-            month       = target.month,
-            year        = target.year,
-            victories   = v,
-            defeats     = d,
-            logged      = v + d,
-            consistency = ((v.toFloat() / (v + d)) * 100).toInt(),
+            month = target.month,
+            year  = target.year,
+            victories = v,
+            defeats = d,
+            logged = v + d,
+            consistency = ((v.toFloat() / (v + d)) * 100).toInt()
         )
+    }
+}
+
+private fun computeRank(state: WarriorState): Pair<String, Color> {
+    // Based on consistency over last 30 days
+    val fmt = DateTimeFormatter.ISO_LOCAL_DATE
+    val now = LocalDate.now()
+    var v = 0; var d = 0
+    (0 until 30).forEach { offset ->
+        when (state.history[now.minusDays(offset.toLong()).format(fmt)]?.status) {
+            "clean"  -> v++
+            "failed" -> d++
+        }
+    }
+    val pct = if (v + d > 0) (v.toFloat() / (v + d) * 100).toInt() else 0
+    return when {
+        pct >= 88  -> "⚡ PARAGON"   to Color(0xFFFFD700)  // top ~7%  (μ+1.5σ)
+        pct >= 73  -> "🛡 ADHERENT" to Color(0xFF1DB954)  // top ~23% (μ+0.5σ)
+        pct >= 58  -> "⚔ SOLDIER"  to Color(0xFF4FC3F7)  // top ~50% (μ−0.5σ)
+        pct >= 43  -> "😐 RECRUIT"  to Color(0xFFFF9800)  // top ~73% (μ−1.5σ)
+        else       -> "💀 FALLEN"    to WarriorRed
     }
 }
 
@@ -75,9 +93,13 @@ private fun buildMonthStats(state: WarriorState): List<MonthStats> {
 // ─────────────────────────────────────────────────────────────
 @Composable
 fun AnalysisScreen(state: WarriorState) {
-    val months  = remember(state.history) { buildMonthStats(state) }
-    val total   = state.totalClean + state.totalFailed
-    val winRate = if (total > 0) (state.totalClean * 100 / total) else 0
+    val monthsData = remember(state.history) { buildMonthStats(state) }
+    val (rank, rankColor) = remember(state.history) { computeRank(state) }
+
+    val allVictories = remember(monthsData) { monthsData.sumOf { it.victories } }
+    val allDefeats   = remember(monthsData) { monthsData.sumOf { it.defeats } }
+    val allConsistency = if (allVictories + allDefeats > 0)
+        (allVictories.toFloat() / (allVictories + allDefeats) * 100).toInt() else 0
 
     Column(
         modifier = Modifier
@@ -85,259 +107,372 @@ fun AnalysisScreen(state: WarriorState) {
             .background(BgBlack)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
-            .padding(top = 20.dp, bottom = 80.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
+            .padding(bottom = 24.dp)
     ) {
 
-        // ── Header ────────────────────────────────────────────
-        Text(
-            text          = "PROGRESS",
-            color         = TextPrimary,
-            fontSize      = 22.sp,
-            fontWeight    = FontWeight.Black,
-            letterSpacing = 3.sp,
-        )
+        // ── Hero rank card ──
+        RankCard(rank = rank, rankColor = rankColor, streak = state.streak, best = state.bestStreak)
 
-        // ── Primary insight card ──────────────────────────────
-        PrimaryInsightCard(
-            winRate    = winRate,
-            streak     = state.streak,
-            bestStreak = state.bestStreak,
-            total      = total,
-        )
+        Spacer(Modifier.height(16.dp))
 
-        // ── Monthly chart ─────────────────────────────────────
-        if (months.isNotEmpty()) {
-            SectionHeader("MONTHLY PERFORMANCE")
-            MonthlyChart(months = months)
-        }
-
-        // ── Trigger breakdown ─────────────────────────────────
-        if (state.triggers.isNotEmpty()) {
-            SectionHeader("RELAPSE TRIGGERS")
-            TriggerBreakdown(triggers = state.triggers)
-        }
-
-        // ── Empty state ───────────────────────────────────────
-        if (total == 0) {
-            EmptyState()
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────
-// PRIMARY INSIGHT — one card, most important numbers
-// ─────────────────────────────────────────────────────────────
-@Composable
-private fun PrimaryInsightCard(
-    winRate:    Int,
-    streak:     Int,
-    bestStreak: Int,
-    total:      Int,
-) {
-    val rateColor = when {
-        winRate >= 80 -> VictoryGreen
-        winRate >= 50 -> WarningAmber
-        else          -> WarriorRed
-    }
-
-    Row(
-        modifier            = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        // Win rate — primary
-        Column(
-            modifier = Modifier
-                .weight(1.3f)
-                .clip(RoundedCornerShape(18.dp))
-                .background(SurfaceDark)
-                .border(1.dp, rateColor.copy(alpha = 0.3f), RoundedCornerShape(18.dp))
-                .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text("WIN RATE", fontSize = 9.sp, color = TextTertiary, fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
-            Spacer(Modifier.height(6.dp))
-            Text("$winRate%", fontSize = 44.sp, fontWeight = FontWeight.Black, color = rateColor, lineHeight = 46.sp)
-            Text("$total days logged", fontSize = 10.sp, color = TextTertiary)
-        }
-
-        // Streak stats — secondary
-        Column(
-            modifier            = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            MiniStatCard("STREAK", "$streak days", TextPrimary)
-            MiniStatCard("BEST", "$bestStreak days", ArenaCyan)
-        }
-    }
-}
-
-@Composable
-private fun MiniStatCard(label: String, value: String, color: Color) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(SurfaceDark)
-            .border(1.dp, BorderColor, RoundedCornerShape(14.dp))
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-    ) {
-        Text(label, fontSize = 8.sp, color = TextTertiary, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp)
-        Spacer(Modifier.height(2.dp))
-        Text(value, fontSize = 18.sp, fontWeight = FontWeight.Black, color = color)
-    }
-}
-
-// ─────────────────────────────────────────────────────────────
-// MONTHLY CHART
-// ─────────────────────────────────────────────────────────────
-@Composable
-private fun MonthlyChart(months: List<MonthStats>) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(SurfaceDark)
-            .border(1.dp, BorderColor, RoundedCornerShape(18.dp))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        // BlueprintBarChart: data = List<Pair<label, value>>
-        // Show win count per month as the bar height
-        BlueprintBarChart(
-            data = months.map { m ->
-                m.month.getDisplayName(TextStyle.SHORT, Locale.getDefault()) to m.victories.toFloat()
-            },
-        )
-
-        // Summary row
+        // ── Overall stats row ──
         Row(
-            modifier              = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceAround,
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            val best = months.maxByOrNull { it.consistency }
-            if (best != null) {
-                LegendChip(
-                    "Best month",
-                    "${best.month.getDisplayName(TextStyle.SHORT, Locale.getDefault())} ${best.consistency}%",
-                    VictoryGreen,
+            MiniStatCard(Modifier.weight(1f), "$allVictories", "VICTORIES", VictoryGreen)
+            MiniStatCard(Modifier.weight(1f), "$allDefeats",   "DEFEATS",   WarriorRed)
+            MiniStatCard(Modifier.weight(1f), "$allConsistency%", "CLEAN",  Color(0xFFFFD700))
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        // ── Monthly bar chart ──
+        if (monthsData.isNotEmpty()) {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Text("MONTHLY VICTORIES", fontSize = 10.sp, color = TextSecondary,
+                    fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+                Spacer(Modifier.height(16.dp))
+                MonthlyBarChart(months = monthsData)
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // ── Consistency ring ──
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(20.dp)
+            ) {
+                ConsistencyRing(
+                    percentage = allConsistency,
+                    modifier = Modifier.size(110.dp)
+                )
+                Column {
+                    Text("OVERALL CONSISTENCY", fontSize = 10.sp,
+                        color = TextSecondary, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+                    Spacer(Modifier.height(6.dp))
+                    Text("$allConsistency%", fontSize = 40.sp,
+                        fontWeight = FontWeight.Black,
+                        color = consistencyColor(allConsistency))
+                    Text(
+                        consistencyLabel(allConsistency),
+                        fontSize = 12.sp, color = TextTertiary, fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // ── Monthly breakdown list ──
+        if (monthsData.isNotEmpty()) {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Text("MONTHLY BREAKDOWN", fontSize = 10.sp, color = TextSecondary,
+                    fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+                Spacer(Modifier.height(14.dp))
+                monthsData.reversed().forEach { m ->
+                    MonthRow(m)
+                    Spacer(Modifier.height(10.dp))
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // ── Weakness ranking ──
+        val sorted = remember(state.triggers) {
+            state.triggers.entries.sortedByDescending { it.value }
+        }
+        if (sorted.isNotEmpty()) {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Text("TRIGGER RANKING", fontSize = 10.sp, color = TextSecondary,
+                    fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+                Spacer(Modifier.height(14.dp))
+                val maxCount = sorted.first().value.toFloat()
+                sorted.forEach { (site, count) ->
+                    WeaknessBar(site = site, count = count, maxCount = maxCount)
+                    Spacer(Modifier.height(12.dp))
+                }
+            }
+        } else {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Text("TRIGGER RANKING", fontSize = 10.sp, color = TextSecondary,
+                    fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+                Spacer(Modifier.height(12.dp))
+                Text("NO TRIGGERS LOGGED — STAY CLEAN", fontSize = 12.sp,
+                    color = VictoryGreen, fontWeight = FontWeight.ExtraBold)
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// COMPONENTS
+// ─────────────────────────────────────────────────────────────
+
+@Composable
+private fun RankCard(rank: String, rankColor: Color, streak: Int, best: Int) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(Color(0xFF0D0D0D))
+            .border(1.dp, rankColor.copy(alpha = 0.3f), RoundedCornerShape(24.dp))
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("WARRIOR RANK", fontSize = 9.sp, color = TextTertiary,
+                fontWeight = FontWeight.ExtraBold, letterSpacing = 3.sp)
+            Spacer(Modifier.height(8.dp))
+            Text(rank, fontSize = 28.sp, fontWeight = FontWeight.Black, color = rankColor)
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("$streak", fontSize = 28.sp, fontWeight = FontWeight.Black, color = WarriorRed)
+                    Text("STREAK", fontSize = 8.sp, color = TextTertiary,
+                        fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("$best", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFFFFD700))
+                    Text("BEST", fontSize = 8.sp, color = TextTertiary,
+                        fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniStatCard(modifier: Modifier, value: String, label: String, color: Color) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(CardBlack)
+            .border(1.dp, BorderColor, RoundedCornerShape(16.dp))
+            .padding(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(value, fontSize = 22.sp, fontWeight = FontWeight.Black, color = color)
+        Spacer(Modifier.height(2.dp))
+        Text(label, fontSize = 8.sp, color = TextTertiary,
+            fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+    }
+}
+
+@Composable
+private fun MonthlyBarChart(months: List<MonthStats>) {
+    val maxV = remember(months) { months.maxOf { it.victories }.coerceAtLeast(1).toFloat() }
+    val animProgress by animateFloatAsState(
+        targetValue = 1f,
+        animationSpec = tween(1000, easing = EaseOutCubic),
+        label = "bar_chart"
+    )
+    // Trigger animation on first composition
+    var started by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { started = true }
+
+    val chartHeight = 120.dp
+    Box(modifier = Modifier.fillMaxWidth().height(chartHeight + 32.dp)) {
+        Canvas(modifier = Modifier.fillMaxWidth().height(chartHeight).align(Alignment.TopCenter)) {
+            val barWidth = (size.width / months.size) * 0.55f
+            val gap      = (size.width / months.size) * 0.45f / 2f
+            val slotW    = size.width / months.size
+
+            months.forEachIndexed { i, m ->
+                val vFrac  = (m.victories.toFloat() / maxV) * animProgress
+                val dFrac  = (m.defeats.toFloat() / maxV) * animProgress
+                val x      = i * slotW + gap
+                val barW2  = barWidth / 2f
+
+                // Victory bar (left half)
+                drawRoundRect(
+                    color  = ChartClean,
+                    topLeft = Offset(x, size.height * (1f - vFrac)),
+                    size   = Size(barW2 - 2f, size.height * vFrac),
+                    cornerRadius = CornerRadius(4f, 4f)
+                )
+                // Defeat bar (right half)
+                drawRoundRect(
+                    color  = ChartFailed,
+                    topLeft = Offset(x + barW2 + 2f, size.height * (1f - dFrac)),
+                    size   = Size(barW2 - 2f, size.height * dFrac),
+                    cornerRadius = CornerRadius(4f, 4f)
                 )
             }
-            val avg = if (months.isNotEmpty()) months.sumOf { it.consistency } / months.size else 0
-            LegendChip("Average", "$avg%", ArenaCyan)
         }
-    }
-}
 
-@Composable
-private fun LegendChip(label: String, value: String, color: Color) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, fontSize = 9.sp, color = TextTertiary, fontWeight = FontWeight.Medium)
-        Text(value, fontSize = 13.sp, color = color, fontWeight = FontWeight.Black)
-    }
-}
-
-// ─────────────────────────────────────────────────────────────
-// TRIGGER BREAKDOWN
-// ─────────────────────────────────────────────────────────────
-@Composable
-private fun TriggerBreakdown(triggers: Map<String, Int>) {
-    val sorted = triggers.entries.sortedByDescending { it.value }.take(5)
-    val max    = sorted.firstOrNull()?.value ?: 1
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(SurfaceDark)
-            .border(1.dp, BorderColor, RoundedCornerShape(18.dp))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        sorted.forEach { (domain, count) ->
-            TriggerRow(domain = domain, count = count, max = max)
-        }
-        if (sorted.size < triggers.size) {
-            Text(
-                "+ ${triggers.size - sorted.size} more triggers tracked",
-                fontSize = 10.sp,
-                color    = TextTertiary,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center,
-            )
-        }
-    }
-}
-
-@Composable
-private fun TriggerRow(domain: String, count: Int, max: Int) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // X-axis labels
         Row(
-            modifier              = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.BottomCenter),
+            horizontalArrangement = Arrangement.SpaceAround
         ) {
-            Text(domain, fontSize = 12.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+            months.forEach { m ->
+                Text(
+                    m.month.getDisplayName(TextStyle.SHORT, Locale.US).uppercase(),
+                    fontSize = 8.sp,
+                    color = TextTertiary,
+                    fontWeight = FontWeight.ExtraBold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+
+    // Legend
+    Spacer(Modifier.height(8.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        LegendDot(color = ChartClean, label = "Clean")
+        LegendDot(color = ChartFailed, label = "Failed")
+    }
+}
+
+@Composable
+private fun LegendDot(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(color))
+        Spacer(Modifier.width(4.dp))
+        Text(label, fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun ConsistencyRing(percentage: Int, modifier: Modifier = Modifier) {
+    val animPct by animateFloatAsState(
+        targetValue = percentage / 100f,
+        animationSpec = tween(1200, easing = EaseOutCubic),
+        label = "ring"
+    )
+    val color = consistencyColor(percentage)
+
+    Canvas(modifier = modifier) {
+        val strokeW = 12.dp.toPx()
+        val inset   = strokeW / 2f
+        drawArc(
+            color      = CardBlack,
+            startAngle = -90f,
+            sweepAngle = 360f,
+            useCenter  = false,
+            topLeft    = Offset(inset, inset),
+            size       = Size(size.width - strokeW, size.height - strokeW),
+            style      = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = strokeW,
+                cap   = StrokeCap.Round
+            )
+        )
+        drawArc(
+            color      = color,
+            startAngle = -90f,
+            sweepAngle = 360f * animPct,
+            useCenter  = false,
+            topLeft    = Offset(inset, inset),
+            size       = Size(size.width - strokeW, size.height - strokeW),
+            style      = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = strokeW,
+                cap   = StrokeCap.Round
+            )
+        )
+    }
+}
+
+@Composable
+private fun MonthRow(m: MonthStats) {
+    val total = m.victories + m.defeats
+    val pct   = if (total > 0) (m.victories.toFloat() / total * 100).toInt() else 0
+    val animPct by animateFloatAsState(
+        targetValue = m.victories.toFloat() / total.coerceAtLeast(1),
+        animationSpec = tween(900, easing = EaseOutCubic),
+        label = "month_bar_${m.month}"
+    )
+
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
-                "$count×",
-                fontSize   = 12.sp,
-                color      = WarriorRed,
-                fontWeight = FontWeight.Black,
+                m.month.getDisplayName(TextStyle.SHORT, Locale.US).uppercase() + " ${m.year}",
+                fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextSecondary
+            )
+            Text(
+                "${m.victories}W · ${m.defeats}L · $pct%",
+                fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextTertiary
             )
         }
+        Spacer(Modifier.height(5.dp))
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(4.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(ElevatedCard),
+                .height(6.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(CardBlack)
         ) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(count.toFloat() / max)
+                    .fillMaxWidth(animPct)
                     .fillMaxHeight()
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(WarriorRed.copy(alpha = 0.7f)),
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(consistencyColor(pct))
             )
         }
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// SECTION HEADER
-// ─────────────────────────────────────────────────────────────
 @Composable
-private fun SectionHeader(text: String) {
-    Text(
-        text          = text,
-        fontSize      = 10.sp,
-        fontWeight    = FontWeight.ExtraBold,
-        color         = TextTertiary,
-        letterSpacing = 3.sp,
+private fun WeaknessBar(site: String, count: Int, maxCount: Float) {
+    val animPct by animateFloatAsState(
+        targetValue = count / maxCount,
+        animationSpec = tween(1000, easing = EaseOutCubic),
+        label = "weakness_$site"
     )
-}
-
-// ─────────────────────────────────────────────────────────────
-// EMPTY STATE
-// ─────────────────────────────────────────────────────────────
-@Composable
-private fun EmptyState() {
-    Box(
-        modifier         = Modifier.fillMaxWidth().padding(vertical = 40.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("📊", fontSize = 48.sp)
-            Text("No data yet", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
-            Text(
-                "Start logging wins and relapses\nto see your progress charts here.",
-                fontSize  = 13.sp,
-                color     = TextTertiary,
-                textAlign = TextAlign.Center,
-                lineHeight = 20.sp,
+            Text(site, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextSecondary)
+            Text("$count×", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = WarriorRed)
+        }
+        Spacer(Modifier.height(4.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(7.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(CardBlack)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(animPct)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(WarriorRed)
             )
         }
     }
+}
+
+// ─────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────
+private fun consistencyColor(pct: Int) = when {
+    pct >= 85 -> VictoryGreen
+    pct >= 60 -> Color(0xFFFFD700)
+    pct >= 40 -> Color(0xFFFF9800)
+    else      -> WarriorRed
+}
+
+private fun consistencyLabel(pct: Int) = when {
+    pct >= 85 -> "ELITE TIER"
+    pct >= 70 -> "SOLID"
+    pct >= 50 -> "AVERAGE"
+    pct >= 30 -> "STRUGGLING"
+    else      -> "CRITICAL"
 }
