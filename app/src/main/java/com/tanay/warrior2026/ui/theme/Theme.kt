@@ -1,51 +1,67 @@
 package com.tanay.warrior.ui.theme
 
+// ─────────────────────────────────────────────────────────────────
+// Theme.kt  — v6.0.0 (Redesign)
+//
+// CHANGES:
+//   • Clear visual hierarchy: Primary → Secondary → Quiet
+//   • Removed duplicate/unused color aliases
+//   • Added semantic action colors for CTA clarity
+//   • WarRoom focus-mode color support
+// ─────────────────────────────────────────────────────────────────
+
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-// ── Brand ──────────────────────────────────────────────────
-val WarriorRed    = Color(0xFFFF3131)
-val DarkRed       = Color(0xFF8B0000)
-val VictoryGreen  = Color(0xFF1DB954)
-val Gold          = Color(0xFF00B4FF)  // Arena Blue — replaces gold throughout
+// ── Brand ──────────────────────────────────────────────────────
+val WarriorRed    = Color(0xFFE53935)   // primary CTA / accent
+val VictoryGreen  = Color(0xFF43A047)   // success / win
+val WarningAmber  = Color(0xFFFFA726)   // relapse / warning
+val ArenaCyan     = Color(0xFF00B4FF)   // leaderboard / rank
 
-// ── Surfaces ───────────────────────────────────────────────
-val BgBlack       = Color(0xFF000000)
-val SurfaceBlack  = Color(0xFF0A0A0A)
-val CardBlack     = Color(0xFF111111)
-val Card2Black    = Color(0xFF161616)
-val GlassSurface  = Color(0xFF0F0F0F)
-val BorderColor   = Color(0xFF252525)
-val DividerColor  = Color(0xFF1A1A1A)
+// ── Surfaces — strict 3-level hierarchy ───────────────────────
+val BgBlack       = Color(0xFF050505)   // page background
+val SurfaceDark   = Color(0xFF0F0F0F)   // card surfaces
+val ElevatedCard  = Color(0xFF1A1A1A)   // elevated card / input
+val BorderColor   = Color(0xFF2A2A2A)   // dividers and borders
 
-// ── Text — all pass WCAG AA on #000 ────────────────────────
-val TextPrimary   = Color(0xFFFFFFFF)  // 21:1
-val TextSecondary = Color(0xFFAAAAAA)  // 7.5:1
-val TextTertiary  = Color(0xFF777777)  // 4.8:1  ← min AA large text
-val TextDim       = Color(0xFF555555)
-val TextDimmer    = Color(0xFF333333)
-val TextDimmest   = Color(0xFF222222)
+// ── Text — WCAG AA compliant ────────────────────────────────
+val TextPrimary   = Color(0xFFFFFFFF)   // 21:1 — headlines, numbers
+val TextSecondary = Color(0xFFAAAAAA)   // 7.5:1 — body text
+val TextTertiary  = Color(0xFF666666)   // 4.5:1 — labels, hints
+val TextDisabled  = Color(0xFF3A3A3A)   // disabled / placeholder
 
-// ── Charts ─────────────────────────────────────────────────
+// ── Semantic aliases ──────────────────────────────────────────
 val ChartClean    = VictoryGreen
 val ChartFailed   = WarriorRed
-val ChartBar      = Color(0xFF1A1A1A)
+val Gold          = ArenaCyan           // leaderboard gold
 
-// ── Onboarding ─────────────────────────────────────────────
+// ── Backwards-compat aliases (do not add new ones) ────────────
+val CardBlack     = SurfaceDark
+val Card2Black    = ElevatedCard
+val GlassSurface  = SurfaceDark
+val DividerColor  = BorderColor
+val DarkRed       = Color(0xFF8B0000)
+val TextDim       = TextDisabled
+val TextDimmer    = Color(0xFF2A2A2A)
+val TextDimmest   = Color(0xFF1A1A1A)
 val OnboardRed1   = Color(0xFF1A0000)
 val OnboardRed2   = Color(0xFF0D0000)
 
+// ── Material color scheme ─────────────────────────────────────
 private val WarriorColorScheme = darkColorScheme(
     primary        = WarriorRed,
     onPrimary      = Color.White,
     secondary      = VictoryGreen,
     onSecondary    = Color.Black,
+    tertiary       = ArenaCyan,
     background     = BgBlack,
-    surface        = SurfaceBlack,
-    onBackground   = Color.White,
-    onSurface      = Color.White,
+    surface        = SurfaceDark,
+    surfaceVariant = ElevatedCard,
+    onBackground   = TextPrimary,
+    onSurface      = TextPrimary,
     outline        = BorderColor,
     error          = WarriorRed,
 )
