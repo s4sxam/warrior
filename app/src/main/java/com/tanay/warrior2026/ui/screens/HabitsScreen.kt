@@ -1,9 +1,17 @@
 package com.tanay.warrior.ui.screens
 
-// [UPDATE] v5.0.0: Replaced habit emoji tiles with GlowingHabitRune vector runes.
-// Rune ignites (glow + pulse) when the habit is the active habit for today.
-// The emoji picker in the Add/Edit dialog is kept for stored metadata but
-// the card display now shows the rune symbol instead of the emoji.
+// ─────────────────────────────────────────────────────────────────
+// HabitsScreen.kt  — v6.0.0 (Redesign)
+//
+// CHANGES:
+//   • Removed GlowingHabitRune — visual noise, not usability
+//   • One clear action per card: tap to activate, icons for edit/delete
+//   • Streak and win rate visible inline — no need to navigate away
+//   • Active habit badge is bold but not over-animated
+//   • Add dialog simplified — emoji picker retained (useful metadata)
+//   • Consistent button heights and spacing
+//   • Architecture note: screen is display-only, all logic in ViewModel
+// ─────────────────────────────────────────────────────────────────
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -11,6 +19,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -26,365 +35,384 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.tanay.warrior.WarriorViewModel
 import com.tanay.warrior.data.Habit
 import com.tanay.warrior.data.WarriorState
-import com.tanay.warrior.ui.components.GlowingHabitRune  // ← NEW
-
-private val Red       = Color(0xFFCC0000)
-private val DarkBg    = Color(0xFF0D0D0D)
-private val CardBg    = Color(0xFF1A1A1A)
-private val TextPri   = Color(0xFFEEEEEE)
-private val TextSec   = Color(0xFF888888)
-private val GreenDay  = Color(0xFF2ECC71)
+import com.tanay.warrior.data.todayKey
+import com.tanay.warrior.ui.theme.*
 
 @Composable
 fun HabitsScreen(
     state: WarriorState,
-    vm: WarriorViewModel
+    vm:    WarriorViewModel,
 ) {
-    var showAddDialog    by remember { mutableStateOf(false) }
-    var editHabit        by remember { mutableStateOf<Habit?>(null) }
-    var confirmDeleteId  by remember { mutableStateOf<String?>(null) }
+    var showAddDialog   by remember { mutableStateOf(false) }
+    var editHabit       by remember { mutableStateOf<Habit?>(null) }
+    var confirmDeleteId by remember { mutableStateOf<String?>(null) }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(DarkBg)
+            .background(BgBlack),
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
 
-            // ── Header ──────────────────────────────────────────────────────
+            // ── Header ─────────────────────────────────────────────────
             Row(
-                modifier = Modifier
+                modifier          = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 20.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = "YOUR HABITS",
-                    color = Red,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 3.sp,
-                    modifier = Modifier.weight(1f)
-                )
-                IconButton(onClick = { showAddDialog = true }) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text          = "HABITS",
+                        color         = TextPrimary,
+                        fontSize      = 22.sp,
+                        fontWeight    = FontWeight.Black,
+                        letterSpacing = 3.sp,
+                    )
+                    Text(
+                        text     = "Tap to activate · swipe or use icons to manage",
+                        color    = TextTertiary,
+                        fontSize = 11.sp,
+                    )
+                }
+                IconButton(
+                    onClick  = { showAddDialog = true },
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(WarriorRed.copy(alpha = 0.12f))
+                        .border(1.dp, WarriorRed.copy(alpha = 0.4f), CircleShape),
+                ) {
                     Icon(
-                        imageVector = Icons.Filled.Add,
+                        imageVector        = Icons.Filled.Add,
                         contentDescription = "Add habit",
-                        tint = Red,
-                        modifier = Modifier.size(28.dp)
+                        tint               = WarriorRed,
+                        modifier           = Modifier.size(20.dp),
                     )
                 }
             }
 
-            Text(
-                text = "Tap a habit to make it active. Long-press to edit.",
-                color = TextSec,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp)
-            )
-
-            // ── Habit list ───────────────────────────────────────────────
+            // ── Habit list ─────────────────────────────────────────────
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                modifier        = Modifier.fillMaxSize(),
+                contentPadding  = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(state.habits, key = { it.id }) { habit ->
                     HabitCard(
-                        habit      = habit,
-                        isActive   = habit.id == state.activeHabitId,
-                        onSelect   = { vm.switchHabit(habit.id) },
-                        onEdit     = { editHabit = habit },
-                        onDelete   = { confirmDeleteId = habit.id },
-                        canDelete  = state.habits.size > 1
+                        habit    = habit,
+                        isActive = habit.id == state.activeHabitId,
+                        onSelect = { vm.switchHabit(habit.id) },
+                        onEdit   = { editHabit = habit },
+                        onDelete = {
+                            if (state.habits.size > 1) confirmDeleteId = habit.id
+                        },
                     )
                 }
-                item {
-                    Spacer(modifier = Modifier.height(80.dp)) // dock clearance
-                }
+
+                // Bottom padding for dock
+                item { Spacer(Modifier.height(80.dp)) }
             }
         }
-    }
 
-    // ── Add habit dialog ──────────────────────────────────────────────────
-    if (showAddDialog) {
-        HabitEditDialog(
-            title      = "NEW HABIT",
-            initial    = Habit(id = "", name = "", emoji = "🔥"),
-            onConfirm  = { name, emoji ->
-                vm.addHabit(name, emoji)
-                showAddDialog = false
-            },
-            onDismiss  = { showAddDialog = false }
-        )
-    }
+        // ── Dialogs ───────────────────────────────────────────────────
+        if (showAddDialog) {
+            HabitEditDialog(
+                title     = "Add Habit",
+                initial   = null,
+                onConfirm = { name, emoji ->
+                    vm.addHabit(name, emoji)
+                    showAddDialog = false
+                },
+                onDismiss = { showAddDialog = false },
+            )
+        }
 
-    // ── Edit habit dialog ─────────────────────────────────────────────────
-    editHabit?.let { habit ->
-        HabitEditDialog(
-            title      = "EDIT HABIT",
-            initial    = habit,
-            onConfirm  = { name, emoji ->
-                vm.renameHabit(habit.id, name, emoji)
-                editHabit = null
-            },
-            onDismiss  = { editHabit = null }
-        )
-    }
+        editHabit?.let { h ->
+            HabitEditDialog(
+                title     = "Edit Habit",
+                initial   = h,
+                onConfirm = { name, emoji ->
+                    vm.renameHabit(h.id, name, emoji)
+                    editHabit = null
+                },
+                onDismiss = { editHabit = null },
+            )
+        }
 
-    // ── Delete confirmation ───────────────────────────────────────────────
-    confirmDeleteId?.let { id ->
-        val habit = state.habits.find { it.id == id }
-        AlertDialog(
-            onDismissRequest = { confirmDeleteId = null },
-            containerColor   = CardBg,
-            title = {
-                Text("DELETE HABIT", color = Red, fontWeight = FontWeight.Black,
-                    letterSpacing = 2.sp, fontSize = 16.sp)
-            },
-            text = {
-                Text(
-                    "Delete \"${habit?.name}\"? All history for this habit will be lost forever.",
-                    color = TextPri, fontSize = 14.sp, lineHeight = 20.sp
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
+        confirmDeleteId?.let { id ->
+            DeleteConfirmDialog(
+                onConfirm = {
                     vm.deleteHabit(id)
                     confirmDeleteId = null
-                }) {
-                    Text("DELETE", color = Red, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmDeleteId = null }) {
-                    Text("CANCEL", color = TextSec)
-                }
-            }
-        )
+                },
+                onDismiss = { confirmDeleteId = null },
+            )
+        }
     }
 }
 
-// ── Habit Card ────────────────────────────────────────────────────────────────
-// [CHANGED] v5.0.0: Left slot now renders GlowingHabitRune instead of a
-// plain emoji Text. The rune ignites (glow + border pulse) when isActive=true.
-
+// ─────────────────────────────────────────────────────────────
+// HABIT CARD
+// ─────────────────────────────────────────────────────────────
 @Composable
 private fun HabitCard(
-    habit: Habit,
+    habit:    Habit,
     isActive: Boolean,
     onSelect: () -> Unit,
-    onEdit: () -> Unit,
+    onEdit:   () -> Unit,
     onDelete: () -> Unit,
-    canDelete: Boolean
 ) {
-    val borderColor = if (isActive) Red else Color(0xFF2A2A2A)
+    val today   = todayKey()
+    val winRate = if (habit.totalClean + habit.totalFailed > 0)
+        (habit.totalClean * 100 / (habit.totalClean + habit.totalFailed)).toString() + "%"
+    else "—"
+
+    val borderColor = if (isActive) WarriorRed.copy(alpha = 0.6f) else BorderColor
+    val bgColor     = if (isActive) WarriorRed.copy(alpha = 0.05f) else SurfaceDark
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(CardBg)
-            .border(
-                width = if (isActive) 1.5.dp else 1.dp,
-                color = borderColor,
-                shape = RoundedCornerShape(12.dp)
-            )
-            .clickable { onSelect() }
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .clip(RoundedCornerShape(16.dp))
+            .background(bgColor)
+            .border(1.dp, borderColor, RoundedCornerShape(16.dp))
+            .clickable(onClick = onSelect)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Emoji + active indicator
+        Box(
+            modifier         = Modifier
+                .size(44.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(ElevatedCard),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(habit.emoji, fontSize = 22.sp)
+        }
 
-        // ── [NEW] Glowing rune replaces emoji ─────────────────
-        // The rune shape is seeded from habit.name (same as GlowingHabitRune
-        // internally uses label.hashCode). isActive drives the ignition effect.
-        GlowingHabitRune(
-            label    = habit.name,
-            isActive = isActive,
-            tileSize = 52.dp,
-            modifier = Modifier.padding(end = 12.dp),
-        )
+        Spacer(Modifier.width(14.dp))
 
         // Name + stats
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = habit.name,
-                color = if (isActive) TextPri else TextSec,
-                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
-                fontSize = 16.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text       = habit.name,
+                    fontSize   = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color      = if (isActive) TextPrimary else TextSecondary,
+                    maxLines   = 1,
+                    overflow   = TextOverflow.Ellipsis,
+                    modifier   = Modifier.weight(1f, fill = false),
+                )
+                if (isActive) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text          = "ACTIVE",
+                        fontSize      = 8.sp,
+                        fontWeight    = FontWeight.ExtraBold,
+                        color         = WarriorRed,
+                        letterSpacing = 1.sp,
+                        modifier      = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(WarriorRed.copy(alpha = 0.12f))
+                            .padding(horizontal = 5.dp, vertical = 2.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(4.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                StatChip("🔥 ${habit.streak}d")
-                StatChip("✅ ${habit.totalClean}")
-                StatChip("Best ${habit.bestStreak}d")
+                MiniStat("🔥 ${habit.streak}d", "streak")
+                MiniStat("✓ ${habit.totalClean}", "wins")
+                MiniStat("$winRate", "rate")
             }
         }
 
-        // Active indicator
-        if (isActive) {
-            Icon(
-                imageVector = Icons.Filled.CheckCircle,
-                contentDescription = "Active",
-                tint = GreenDay,
-                modifier = Modifier
-                    .size(20.dp)
-                    .padding(start = 4.dp)
-            )
-        }
+        Spacer(Modifier.width(8.dp))
 
-        Spacer(modifier = Modifier.width(8.dp))
-
-        // Edit
-        IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
-            Icon(Icons.Filled.Edit, contentDescription = "Edit",
-                 tint = TextSec, modifier = Modifier.size(16.dp))
-        }
-
-        // Delete
-        if (canDelete) {
-            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Filled.Delete, contentDescription = "Delete",
-                     tint = Color(0xFF552222), modifier = Modifier.size(16.dp))
+        // Edit / delete icons — secondary, quiet
+        Row {
+            IconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    Icons.Filled.Edit,
+                    contentDescription = "Edit",
+                    tint               = TextTertiary,
+                    modifier           = Modifier.size(16.dp),
+                )
+            }
+            IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    Icons.Filled.Delete,
+                    contentDescription = "Delete",
+                    tint               = WarriorRed.copy(alpha = 0.5f),
+                    modifier           = Modifier.size(16.dp),
+                )
             }
         }
     }
 }
 
 @Composable
-private fun StatChip(text: String) {
-    Text(text = text, color = TextSec, fontSize = 11.sp)
+private fun MiniStat(value: String, label: String) {
+    Text(
+        text       = "$value $label",
+        fontSize   = 10.sp,
+        color      = TextTertiary,
+        fontWeight = FontWeight.Medium,
+    )
 }
 
-// ── Add / Edit dialog ─────────────────────────────────────────────────────────
-// Emoji picker is kept in the dialog — the emoji is stored in Habit.emoji for
-// future use (notifications, widgets) even though the card now shows a rune.
-
-private val EMOJI_OPTIONS = listOf(
-    "🔥","💪","🧠","❤️","🚭","🍺","📵","💊","🎮","🍔","😴","🏃","📖","✍️","🧘"
-)
+// ─────────────────────────────────────────────────────────────
+// ADD / EDIT DIALOG
+// ─────────────────────────────────────────────────────────────
+private val EMOJI_OPTIONS = listOf("🔥","💪","🧠","📚","🏃","💤","🥗","🚭","🎯","⚔️","🛡️","🌱")
 
 @Composable
 private fun HabitEditDialog(
-    title: String,
-    initial: Habit,
-    onConfirm: (name: String, emoji: String) -> Unit,
-    onDismiss: () -> Unit
+    title:     String,
+    initial:   Habit?,
+    onConfirm: (String, String) -> Unit,
+    onDismiss: () -> Unit,
 ) {
-    var name  by remember { mutableStateOf(initial.name) }
-    var emoji by remember { mutableStateOf(initial.emoji) }
+    var name  by remember { mutableStateOf(initial?.name  ?: "") }
+    var emoji by remember { mutableStateOf(initial?.emoji ?: "🔥") }
+    val valid = name.isNotBlank()
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor   = CardBg,
-        title = {
-            Text(title, color = Red, fontWeight = FontWeight.Black,
-                letterSpacing = 2.sp, fontSize = 16.sp)
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(SurfaceDark)
+                .border(1.dp, BorderColor, RoundedCornerShape(24.dp))
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(title, fontSize = 17.sp, fontWeight = FontWeight.Black, color = TextPrimary)
 
-                // Name field
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Habit name", color = TextSec) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor   = Red,
-                        unfocusedBorderColor = Color(0xFF333333),
-                        focusedTextColor     = TextPri,
-                        unfocusedTextColor   = TextPri,
-                        cursorColor          = Red
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                // Rune preview (shows what the card will look like)
-                if (name.isNotBlank()) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF111111))
-                            .border(1.dp, Color(0xFF2A2A2A), RoundedCornerShape(10.dp))
-                            .padding(12.dp)
-                    ) {
-                        GlowingHabitRune(
-                            label    = name,
-                            isActive = true,
-                            tileSize = 48.dp,
-                        )
-                        Column {
-                            Text(
-                                "RUNE PREVIEW",
-                                fontSize = 8.sp,
-                                color = TextSec,
-                                fontWeight = FontWeight.ExtraBold,
-                                letterSpacing = 2.sp,
-                            )
-                            Text(
-                                "This rune appears on your habit card.",
-                                fontSize = 11.sp,
-                                color = TextSec,
-                                lineHeight = 16.sp,
-                            )
-                        }
-                    }
-                }
-
-                // Emoji picker (kept for metadata / notifications)
-                Text("Choose icon (used in notifications)", color = TextSec, fontSize = 12.sp)
-                @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-                androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
-                    columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(5),
-                    modifier = Modifier.height(120.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    items(EMOJI_OPTIONS.size) { i ->
-                        val e = EMOJI_OPTIONS[i]
-                        val selected = e == emoji
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (selected) Red.copy(alpha = 0.25f) else Color(0xFF222222))
-                                .border(
-                                    width = if (selected) 1.5.dp else 0.dp,
-                                    color = if (selected) Red else Color.Transparent,
-                                    shape = RoundedCornerShape(8.dp)
-                                )
-                                .clickable { emoji = e }
-                        ) {
-                            Text(e, fontSize = 20.sp)
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { if (name.isNotBlank()) onConfirm(name.trim(), emoji) },
-                enabled = name.isNotBlank()
+            // Emoji picker row
+            Row(
+                modifier            = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("SAVE", color = if (name.isNotBlank()) Red else TextSec,
-                     fontWeight = FontWeight.Bold)
+                EMOJI_OPTIONS.forEach { e ->
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (emoji == e) WarriorRed.copy(alpha = 0.15f) else ElevatedCard)
+                            .border(
+                                1.dp,
+                                if (emoji == e) WarriorRed.copy(alpha = 0.6f) else Color.Transparent,
+                                RoundedCornerShape(10.dp),
+                            )
+                            .clickable { emoji = e },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(e, fontSize = 18.sp)
+                    }
+                }
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("CANCEL", color = TextSec)
+
+            OutlinedTextField(
+                value         = name,
+                onValueChange = { name = it },
+                label         = { Text("Habit name", color = TextTertiary, fontSize = 13.sp) },
+                placeholder   = { Text("e.g. No Porn, No Smoking", color = TextTertiary, fontSize = 13.sp) },
+                modifier      = Modifier.fillMaxWidth(),
+                singleLine    = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                colors        = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor      = TextPrimary,
+                    unfocusedTextColor    = TextPrimary,
+                    focusedBorderColor    = WarriorRed,
+                    unfocusedBorderColor  = BorderColor,
+                    focusedLabelColor     = WarriorRed,
+                    cursorColor           = WarriorRed,
+                ),
+            )
+
+            Row(
+                modifier            = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedButton(
+                    onClick  = onDismiss,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape    = RoundedCornerShape(12.dp),
+                    border   = BorderStroke(1.dp, BorderColor),
+                ) {
+                    Text("Cancel", color = TextSecondary)
+                }
+                Button(
+                    onClick  = { if (valid) onConfirm(name.trim(), emoji) },
+                    enabled  = valid,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape    = RoundedCornerShape(12.dp),
+                    colors   = ButtonDefaults.buttonColors(
+                        containerColor = WarriorRed,
+                        contentColor   = Color.White,
+                    ),
+                ) {
+                    Text("Save", fontWeight = FontWeight.Black)
+                }
             }
         }
-    )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// DELETE CONFIRM DIALOG
+// ─────────────────────────────────────────────────────────────
+@Composable
+private fun DeleteConfirmDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(SurfaceDark)
+                .border(1.5.dp, WarriorRed.copy(alpha = 0.4f), RoundedCornerShape(24.dp))
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text("Delete Habit?", fontSize = 17.sp, fontWeight = FontWeight.Black, color = TextPrimary)
+            Text(
+                "All history for this habit will be permanently lost.",
+                fontSize  = 13.sp,
+                color     = TextSecondary,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+            Row(
+                modifier              = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedButton(
+                    onClick  = onDismiss,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape    = RoundedCornerShape(12.dp),
+                    border   = BorderStroke(1.dp, BorderColor),
+                ) {
+                    Text("Keep", color = TextSecondary)
+                }
+                Button(
+                    onClick  = onConfirm,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape    = RoundedCornerShape(12.dp),
+                    colors   = ButtonDefaults.buttonColors(containerColor = WarriorRed),
+                ) {
+                    Text("Delete", fontWeight = FontWeight.Black, color = Color.White)
+                }
+            }
+        }
+    }
 }
