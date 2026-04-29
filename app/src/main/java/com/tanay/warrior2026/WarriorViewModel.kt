@@ -53,8 +53,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
@@ -121,20 +119,11 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         viewModelScope.launch {
-            // [FIX NC-6] Use first() to load initial state, then switch to collectLatest
-            // for subsequent changes. Previously collectLatest fired advanceBotsIfNeeded()
-            // on EVERY DataStore write (logVictory, saveConfession, etc.) — loading and
-            // re-serialising 1050 bots each time. Now bot simulation runs only once on
-            // launch, not on every state emission.
-            val initial = repo.warriorStateFlow.first()
-            _state.value = initial
-            if (initial.hasCompletedProfile && initial.botsJson.isNotBlank()) {
-                advanceBotsIfNeeded(initial.botsJson)
-            }
-            // Continue collecting for UI-driven state changes (streak, habits, etc.)
             repo.warriorStateFlow.collectLatest { s ->
                 _state.value = s
-                // Do NOT call advanceBotsIfNeeded here — bots are only advanced once per launch
+                if (s.hasCompletedProfile && s.botsJson.isNotBlank()) {
+                    advanceBotsIfNeeded(s.botsJson)
+                }
             }
         }
 
@@ -368,12 +357,6 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
 
     fun clearConfetti() { _showConfetti.value = false }
 
-    fun saveConfession(text: String) {
-        if (text.isBlank()) return
-        _state.update { it.copy(lastConfession = text.trim()) }
-        viewModelScope.launch { repo.saveState(_state.value) }
-    }
-
     fun exportJson(): String = repo.exportJson(_state.value)
 
     fun importJson(json: String): Boolean {
@@ -510,26 +493,14 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         val localUri = _updateState.value.localUri ?: return
         val version  = _updateState.value.latestVersion
 
-        // [FIX BUG 2] On Android 10+ (API 29+) DownloadManager.COLUMN_LOCAL_URI
-        // returns a content:// URI, not a file:// path. Converting it to File via
-        // Uri.parse().path returns null or a wrong path, causing FileProvider to crash
-        // with FileNotFoundException or IllegalArgumentException.
-        //
-        // Fix: use the URI directly. If it's already a content:// URI (API 29+) we pass
-        // it straight to the installer. If it's a file:// URI (API 28-) we still need
-        // FileProvider to wrap it into a content URI for the installer.
-        val contentUri: android.net.Uri = run {
-            val parsed = android.net.Uri.parse(localUri)
-            if (parsed.scheme == "file") {
-                // Legacy path: wrap via FileProvider
-                val file = java.io.File(parsed.path ?: return)
-                FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
-            } else {
-                // content:// URI from DownloadManager — use directly
-                parsed
-            }
-        }
+        // Use the localUri from DownloadManager directly — already verified path
+        val file = File(Uri.parse(localUri).path ?: return)
 
+        val contentUri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.provider",
+            file
+        )
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(contentUri, "application/vnd.android.package-archive")
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
