@@ -39,7 +39,6 @@ import com.tanay.warrior.data.BotSimulator
 import com.tanay.warrior.data.DATE_FORMATTER
 import com.tanay.warrior.data.WarriorRegion
 import com.tanay.warrior.data.tierOf
-import com.tanay.warrior.ui.components.ArenaMapCard
 import com.tanay.warrior.ui.components.LiveRivalCard
 import com.tanay.warrior.ui.theme.*
 import java.time.LocalDate
@@ -69,10 +68,6 @@ fun LeaderboardScreen(
     }
     val userEntry = board.find { it.isUser }
 
-    val arenaPlayers = remember(board) {
-        board.take(7).map { it.name to it.points }
-    }
-
     selectedBotId?.let { botId ->
         val bot = getBotProfile(botId)
         if (bot != null) {
@@ -98,11 +93,6 @@ fun LeaderboardScreen(
 
             // Arena map + rival only shown on board tabs
             if (activeTab != LeaderboardTab.ALGORITHM) {
-                ArenaMapCard(
-                    players  = arenaPlayers,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(10.dp))
                 LiveRivalCard(
                     myStreak    = myStreak,
                     rivalStreak = rivalStreak,
