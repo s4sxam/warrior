@@ -202,15 +202,11 @@ private fun MonthlyChart(months: List<MonthStats>) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // BlueprintBarChart from original — kept as-is (good component)
+        // BlueprintBarChart: data = List<Pair<label, value>>
+        // Show win count per month as the bar height
         BlueprintBarChart(
-            months = months.map { m ->
-                com.tanay.warrior.ui.components.MonthBar(
-                    label      = m.month.getDisplayName(TextStyle.SHORT, Locale.getDefault()),
-                    victories  = m.victories,
-                    defeats    = m.defeats,
-                    consistency = m.consistency,
-                )
+            data = months.map { m ->
+                m.month.getDisplayName(TextStyle.SHORT, Locale.getDefault()) to m.victories.toFloat()
             },
         )
 
