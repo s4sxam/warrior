@@ -1,35 +1,18 @@
 package com.tanay.warrior.ui.screens
 
-// ─────────────────────────────────────────────────────────────────
-// DashboardScreen.kt  — v6.0.0 (Redesign)
-//
-// CORE FIXES:
-//   1. ONE dominant action per state (LOG TODAY button / ALREADY LOGGED)
-//   2. Visual hierarchy: Streak number → Action button → Stats → Quote
-//   3. Removed: GlitchOverlay, ShatterOverlay, SlashOverlay (too many effects)
-//   4. Removed: VillainArcOverlay, StreakFuneralOverlay (cognitive overload)
-//   5. Kept: MilestoneBurst only (1 signature effect, earns its place)
-//   6. Kept: WarRoomBackground but at 20% opacity so it doesn't compete
-//   7. Kept: StreakHero ring — emotionally resonant, not expensive
-//   8. RecoveryCard shown when yesterday failed — clear contextual prompt
-//   9. BattleCalendar moved to BOTTOM (supporting detail, not hero)
-//  10. Performance: no continuous per-frame animations on main screen
-// ─────────────────────────────────────────────────────────────────
-
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -41,29 +24,23 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tanay.warrior.data.WarriorState
-import com.tanay.warrior.ui.components.MilestoneBurst
-import com.tanay.warrior.ui.components.WarRoomBackground
-import com.tanay.warrior.ui.components.rememberStreakRingColor
 import com.tanay.warrior.ui.theme.*
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
-// ── Quotes pool ───────────────────────────────────────────────
+// ── Motivational quotes pool ──────────────────────────────────
 private val QUOTES = listOf(
-    "Discipline is choosing between what you want now and what you want most.",
+    "Discipline is choosing between what you want NOW and what you want MOST.",
     "Every day clean is a vote for the man you're becoming.",
     "The pain of discipline is nothing compared to the pain of regret.",
     "Warriors are not born. They are built — one clean day at a time.",
     "Control your mind or it will control you.",
+    "Your future self is watching. Make him proud.",
+    "Suffering now. Champion later.",
+    "The enemy inside you is the only enemy that matters.",
     "Hard choices, easy life. Easy choices, hard life.",
+    "Don't wish it were easier. Make yourself stronger.",
 )
-
-// ── Action state — drives the ONE dominant button ─────────────
-private sealed class DayActionState {
-    object NotLogged  : DayActionState()
-    object LoggedWin  : DayActionState()
-    object LoggedLoss : DayActionState()
-}
 
 @Composable
 fun DashboardScreen(
@@ -71,410 +48,241 @@ fun DashboardScreen(
     onPanicClick: () -> Unit,
     onVictoryClick: () -> Unit,
     onRelapseClick: () -> Unit,
-    onSaveConfession: (String) -> Unit = {},
 ) {
-    // ── Animate streak count ──────────────────────────────────
     val streakAnim by animateIntAsState(
-        targetValue   = state.streak,
-        animationSpec = tween(700, easing = EaseOutCubic),
-        label         = "streak"
+        targetValue  = state.streak,
+        animationSpec = tween(900, easing = EaseOutCubic),
+        label        = "streak"
+    )
+    val bestAnim by animateIntAsState(
+        targetValue  = state.bestStreak,
+        animationSpec = tween(900, easing = EaseOutCubic),
+        label        = "best"
     )
 
+    // Stable random quote — changes only when date changes
     val quote = remember { QUOTES.random() }
 
-    val todayStatus = remember(state.history) {
-        state.history[LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)]?.status
-    }
+    // Detect yesterday's relapse for recovery card
     val yesterdayFailed = remember(state.history) {
         val yKey = LocalDate.now().minusDays(1).format(DateTimeFormatter.ISO_LOCAL_DATE)
         state.history[yKey]?.status == "failed"
     }
-
-    val actionState: DayActionState = when (todayStatus) {
-        "clean"  -> DayActionState.LoggedWin
-        "failed" -> DayActionState.LoggedLoss
-        else     -> DayActionState.NotLogged
+    val todayLogged = state.isTodayLogged()
+    val todayStatus = remember(state.history) {
+        state.history[LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)]?.status
     }
 
-    // ── Root ──────────────────────────────────────────────────
-    Box(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BgBlack)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
 
-        // Subtle animated background — low opacity, doesn't compete
-        WarRoomBackground(
-            streak   = streakAnim,
-            modifier = Modifier.fillMaxSize(),
+        // ── Recovery card — shown day after relapse if today not yet logged ──
+        if (yesterdayFailed && !todayLogged) {
+            Spacer(Modifier.height(4.dp))
+            RecoveryCard(bestStreak = state.bestStreak)
+            Spacer(Modifier.height(14.dp))
+        }
+
+        // ── Streak hero ──
+        StreakHero(
+            streak     = streakAnim,
+            best       = bestAnim,
+            todayStatus = todayStatus
         )
 
-        // Scrim so content stays readable
+        Spacer(Modifier.height(16.dp))
+
+        // ── Quote ──
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .background(BgBlack.copy(alpha = 0.82f))
-        )
-
-        // Scrollable content column
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(top = 16.dp, bottom = 32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(CardBlack)
+                .border(1.dp, BorderColor, RoundedCornerShape(16.dp))
+                .padding(horizontal = 20.dp, vertical = 14.dp)
         ) {
-
-            // ── 1. Recovery nudge (contextual, not always on screen) ──
-            if (yesterdayFailed && actionState == DayActionState.NotLogged) {
-                RecoveryCard(bestStreak = state.bestStreak)
-                Spacer(Modifier.height(16.dp))
-            }
-
-            // ── 2. Streak Hero — emotional anchor ─────────────────────
-            StreakHero(
-                streak      = streakAnim,
-                best        = state.bestStreak,
-                todayStatus = todayStatus,
-            )
-
-            Spacer(Modifier.height(24.dp))
-
-            // ── 3. THE ONE ACTION — dominant, impossible to miss ───────
-            PrimaryActionButton(
-                state     = actionState,
-                onVictory = onVictoryClick,
-                onRelapse = onRelapseClick,
-                onPanic   = onPanicClick,
-            )
-
-            Spacer(Modifier.height(20.dp))
-
-            // ── 4. Quick stats row — secondary, subdued ────────────────
-            QuickStatsRow(state = state)
-
-            Spacer(Modifier.height(20.dp))
-
-            // ── 5. Quote card — quiet, tertiary ───────────────────────
-            QuoteCard(quote = quote)
-
-            Spacer(Modifier.height(24.dp))
-
-            // ── 6. Battle Calendar — supporting detail ─────────────────
-            SectionLabel("THIS MONTH")
-            Spacer(Modifier.height(10.dp))
-            BattleCalendar(state = state)
-
-            Spacer(Modifier.height(32.dp))
-
             Text(
-                "MADE BY TANAY × EL",
-                fontSize      = 9.sp,
-                color         = TextDisabled,
-                fontWeight    = FontWeight.Black,
-                letterSpacing = 5.sp,
+                "\"$quote\"",
+                fontSize  = 12.sp,
+                color     = TextSecondary,
+                fontWeight = FontWeight.Medium,
+                textAlign  = TextAlign.Center,
+                lineHeight = 20.sp,
+                modifier   = Modifier.fillMaxWidth()
             )
         }
 
-        // ── Effect: only MilestoneBurst — earned, brief, meaningful ───
-        MilestoneBurst(streak = streakAnim)
-    }
-}
+        Spacer(Modifier.height(16.dp))
 
-// ─────────────────────────────────────────────────────────────
-// PRIMARY ACTION BUTTON — the entire screen's reason to exist
-// ─────────────────────────────────────────────────────────────
-@Composable
-private fun PrimaryActionButton(
-    state: DayActionState,
-    onVictory: () -> Unit,
-    onRelapse: () -> Unit,
-    onPanic: () -> Unit,
-) {
-    AnimatedContent(
-        targetState    = state,
-        transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(200)) },
-        label          = "action",
-    ) { s ->
-        when (s) {
-            is DayActionState.NotLogged -> Column(
-                modifier            = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+        // ── Panic ──
+        Button(
+            onClick  = onPanicClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(58.dp)
+                .shadow(8.dp, CircleShape, spotColor = WarriorRed.copy(alpha = 0.4f)),
+            shape  = CircleShape,
+            colors = ButtonDefaults.buttonColors(containerColor = WarriorRed)
+        ) {
+            Icon(Icons.Filled.Warning, contentDescription = "Emergency", tint = Color.White)
+            Spacer(Modifier.width(8.dp))
+            Text("PANIC BUTTON", fontWeight = FontWeight.Black, fontSize = 15.sp, color = Color.White, letterSpacing = 1.sp)
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // ── Action row ──
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(
+                onClick  = onVictoryClick,
+                modifier = Modifier.weight(1f).height(54.dp),
+                shape    = RoundedCornerShape(18.dp),
+                colors   = ButtonDefaults.buttonColors(containerColor = VictoryGreen),
+                enabled  = !todayLogged || todayStatus != "clean"
             ) {
-                // BIG WIN button — primary
-                Button(
-                    onClick  = onVictory,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(64.dp),
-                    shape  = RoundedCornerShape(18.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = VictoryGreen,
-                        contentColor   = Color.Black,
-                    ),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp),
-                ) {
-                    Text(
-                        "✓  LOG TODAY AS WIN",
-                        fontSize      = 16.sp,
-                        fontWeight    = FontWeight.Black,
-                        letterSpacing = 1.sp,
-                    )
-                }
-
-                // Relapse — secondary, smaller, less prominent
-                Row(
-                    modifier            = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    OutlinedButton(
-                        onClick  = onRelapse,
-                        modifier = Modifier.weight(1f).height(48.dp),
-                        shape    = RoundedCornerShape(14.dp),
-                        border   = BorderStroke(1.dp, WarriorRed.copy(alpha = 0.6f)),
-                        colors   = ButtonDefaults.outlinedButtonColors(contentColor = WarriorRed),
-                    ) {
-                        Text("Log Relapse", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                    OutlinedButton(
-                        onClick  = onPanic,
-                        modifier = Modifier.weight(1f).height(48.dp),
-                        shape    = RoundedCornerShape(14.dp),
-                        border   = BorderStroke(1.dp, WarningAmber.copy(alpha = 0.6f)),
-                        colors   = ButtonDefaults.outlinedButtonColors(contentColor = WarningAmber),
-                    ) {
-                        Text("🆘 Panic", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                }
+                Text("I STAY CLEAN", fontWeight = FontWeight.Black, fontSize = 12.sp, color = Color.Black)
             }
-
-            is DayActionState.LoggedWin -> Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(VictoryGreen.copy(alpha = 0.12f))
-                    .border(1.dp, VictoryGreen.copy(alpha = 0.4f), RoundedCornerShape(18.dp))
-                    .padding(vertical = 20.dp),
-                contentAlignment = Alignment.Center,
+            OutlinedButton(
+                onClick  = onRelapseClick,
+                modifier = Modifier.weight(1f).height(54.dp),
+                shape    = RoundedCornerShape(18.dp),
+                colors   = ButtonDefaults.outlinedButtonColors(contentColor = WarriorRed),
+                border   = BorderStroke(1.dp, Color(0xFF2A0000)),
+                enabled  = !todayLogged || todayStatus != "failed"
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("✓", fontSize = 32.sp, color = VictoryGreen)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "TODAY IS LOGGED",
-                        fontSize      = 13.sp,
-                        fontWeight    = FontWeight.ExtraBold,
-                        color         = VictoryGreen,
-                        letterSpacing = 2.sp,
-                    )
-                    Text(
-                        "Come back tomorrow. Stay strong.",
-                        fontSize = 12.sp,
-                        color    = TextTertiary,
-                    )
-                }
+                Text("I FAILED", fontWeight = FontWeight.Black, fontSize = 12.sp, color = WarriorRed)
             }
+        }
 
-            is DayActionState.LoggedLoss -> Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(WarriorRed.copy(alpha = 0.10f))
-                    .border(1.dp, WarriorRed.copy(alpha = 0.4f), RoundedCornerShape(18.dp))
-                    .padding(vertical = 20.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("↺", fontSize = 32.sp, color = WarriorRed)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "RESTART BEGINS NOW",
-                        fontSize      = 13.sp,
-                        fontWeight    = FontWeight.ExtraBold,
-                        color         = WarriorRed,
-                        letterSpacing = 2.sp,
-                    )
-                    Text(
-                        "Every champion has risen from zero.",
-                        fontSize = 12.sp,
-                        color    = TextTertiary,
-                    )
+        // Already logged message
+        if (todayLogged) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                if (todayStatus == "clean") "✅ Today logged. Tap UNDO in header to correct."
+                else "❌ Relapse logged. Tomorrow is a new war.",
+                fontSize  = 10.sp,
+                color     = if (todayStatus == "clean") VictoryGreen else WarriorRed,
+                fontWeight = FontWeight.Bold,
+                textAlign  = TextAlign.Center,
+                modifier   = Modifier.fillMaxWidth()
+            )
+        }
+
+        Spacer(Modifier.height(22.dp))
+
+        // ── Battle Calendar ──
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
+            Column {
+                Text("BATTLE CALENDAR", fontSize = 10.sp, color = TextSecondary,
+                    fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+                Spacer(Modifier.height(14.dp))
+                BattleCalendar(state = state)
+                Spacer(Modifier.height(10.dp))
+                // Legend
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    LegendItem(color = VictoryGreen, label = "Clean")
+                    LegendItem(color = WarriorRed,   label = "Failed")
+                    LegendItem(color = CardBlack,    label = "Not logged", border = true)
                 }
             }
         }
+
+        Spacer(Modifier.height(24.dp))
+        Text("MADE BY TANAY × EL", fontSize = 9.sp, color = TextDimmest,
+            fontWeight = FontWeight.Black, letterSpacing = 5.sp)
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// STREAK HERO — emotional anchor, single canvas, no overdraw
-// ─────────────────────────────────────────────────────────────
+// ── Streak hero with ring ──────────────────────────────────────
 @Composable
 private fun StreakHero(streak: Int, best: Int, todayStatus: String?) {
     val ringPct = if (best > 0) (streak.toFloat() / best).coerceIn(0f, 1f) else 0f
     val animRing by animateFloatAsState(
-        targetValue   = ringPct,
-        animationSpec = tween(900, easing = EaseOutCubic),
-        label         = "ring",
+        targetValue  = ringPct,
+        animationSpec = tween(1000, easing = EaseOutCubic),
+        label        = "ring"
     )
-    val ringColor by rememberStreakRingColor(streak = streak)
+    val ringColor = when {
+        streak == 0       -> Color(0xFF2A2A2A)
+        streak >= best    -> Gold
+        streak >= best / 2 -> VictoryGreen
+        else              -> WarriorRed
+    }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(28.dp))
             .background(
-                Brush.verticalGradient(
-                    listOf(Color(0xFF0E0000), BgBlack)
-                )
+                Brush.verticalGradient(listOf(Color(0xFF100000), BgBlack))
             )
             .border(1.dp, BorderColor, RoundedCornerShape(28.dp))
             .padding(28.dp),
-        contentAlignment = Alignment.Center,
+        contentAlignment = Alignment.Center
     ) {
         Row(
-            modifier              = Modifier.fillMaxWidth(),
+            modifier            = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceAround,
-            verticalAlignment     = Alignment.CenterVertically,
+            verticalAlignment   = Alignment.CenterVertically
         ) {
-            // Ring + number
+            // Ring
             Box(contentAlignment = Alignment.Center, modifier = Modifier.size(120.dp)) {
                 androidx.compose.foundation.Canvas(modifier = Modifier.size(120.dp)) {
                     val stroke = 10.dp.toPx()
                     val inset  = stroke / 2f
                     // Track
                     drawArc(
-                        color      = Color(0xFF1E1E1E),
-                        startAngle = -90f, sweepAngle = 360f,
-                        useCenter  = false,
-                        topLeft    = Offset(inset, inset),
-                        size       = Size(size.width - stroke, size.height - stroke),
-                        style      = Stroke(stroke, cap = StrokeCap.Round),
+                        color       = Color(0xFF1A1A1A),
+                        startAngle  = -90f, sweepAngle = 360f,
+                        useCenter   = false,
+                        topLeft     = Offset(inset, inset),
+                        size        = Size(size.width - stroke, size.height - stroke),
+                        style       = Stroke(stroke, cap = StrokeCap.Round)
                     )
                     // Progress
-                    if (animRing > 0f) drawArc(
-                        color      = ringColor,
-                        startAngle = -90f, sweepAngle = 360f * animRing,
-                        useCenter  = false,
-                        topLeft    = Offset(inset, inset),
-                        size       = Size(size.width - stroke, size.height - stroke),
-                        style      = Stroke(stroke, cap = StrokeCap.Round),
+                    drawArc(
+                        color       = ringColor,
+                        startAngle  = -90f, sweepAngle = 360f * animRing,
+                        useCenter   = false,
+                        topLeft     = Offset(inset, inset),
+                        size        = Size(size.width - stroke, size.height - stroke),
+                        style       = Stroke(stroke, cap = StrokeCap.Round)
                     )
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "$streak",
-                        fontSize   = 42.sp,
-                        fontWeight = FontWeight.Black,
-                        color      = TextPrimary,
-                        lineHeight = 44.sp,
-                    )
-                    Text(
-                        "DAYS",
-                        fontSize      = 8.sp,
-                        color         = TextTertiary,
-                        fontWeight    = FontWeight.ExtraBold,
-                        letterSpacing = 2.sp,
-                    )
+                    Text("$streak", fontSize = 38.sp, fontWeight = FontWeight.Black, color = ringColor, lineHeight = 40.sp)
+                    Text("DAYS", fontSize = 8.sp, color = TextTertiary, fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
                 }
             }
 
-            // Side stats — secondary prominence
-            Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                SideStat(value = "$best", label = "BEST")
-                SideStat(
-                    value = when (todayStatus) {
+            // Side stats
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("$best", fontSize = 24.sp, fontWeight = FontWeight.Black, color = Gold)
+                    Text("BEST", fontSize = 8.sp, color = TextTertiary, fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    val statusIcon = when (todayStatus) {
                         "clean"  -> "✅"
                         "failed" -> "❌"
                         else     -> "⬜"
-                    },
-                    label = "TODAY",
-                )
+                    }
+                    Text(statusIcon, fontSize = 24.sp)
+                    Text("TODAY", fontSize = 8.sp, color = TextTertiary, fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+                }
             }
         }
     }
 }
 
-@Composable
-private fun SideStat(value: String, label: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, fontSize = 22.sp, fontWeight = FontWeight.Black, color = TextPrimary)
-        Text(label, fontSize = 8.sp, color = TextTertiary, fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
-    }
-}
-
-// ─────────────────────────────────────────────────────────────
-// QUICK STATS ROW — secondary, 3-value, no animation
-// ─────────────────────────────────────────────────────────────
-@Composable
-private fun QuickStatsRow(state: WarriorState) {
-    Row(
-        modifier            = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        QuickStatChip(
-            modifier = Modifier.weight(1f),
-            value    = "${state.totalClean}",
-            label    = "WINS",
-            color    = VictoryGreen,
-        )
-        QuickStatChip(
-            modifier = Modifier.weight(1f),
-            value    = "${state.totalFailed}",
-            label    = "RELAPSES",
-            color    = WarriorRed,
-        )
-        QuickStatChip(
-            modifier = Modifier.weight(1f),
-            value    = if (state.totalClean + state.totalFailed > 0)
-                "${(state.totalClean * 100 / (state.totalClean + state.totalFailed))}%"
-            else "—",
-            label    = "RATE",
-            color    = ArenaCyan,
-        )
-    }
-}
-
-@Composable
-private fun QuickStatChip(modifier: Modifier, value: String, label: String, color: Color) {
-    Column(
-        modifier            = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(SurfaceDark)
-            .border(1.dp, BorderColor, RoundedCornerShape(14.dp))
-            .padding(vertical = 14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(value, fontSize = 22.sp, fontWeight = FontWeight.Black, color = color)
-        Text(label, fontSize = 8.sp, color = TextTertiary, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp)
-    }
-}
-
-// ─────────────────────────────────────────────────────────────
-// QUOTE CARD — quiet, tertiary
-// ─────────────────────────────────────────────────────────────
-@Composable
-private fun QuoteCard(quote: String) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(SurfaceDark)
-            .border(1.dp, BorderColor, RoundedCornerShape(16.dp))
-            .padding(horizontal = 20.dp, vertical = 14.dp),
-    ) {
-        Text(
-            "\"$quote\"",
-            fontSize   = 12.sp,
-            color      = TextTertiary,
-            fontWeight = FontWeight.Medium,
-            textAlign  = TextAlign.Center,
-            lineHeight  = 20.sp,
-            modifier    = Modifier.fillMaxWidth(),
-        )
-    }
-}
-
-// ─────────────────────────────────────────────────────────────
-// RECOVERY CARD — shown only when yesterday failed
-// ─────────────────────────────────────────────────────────────
+// ── Recovery card ─────────────────────────────────────────────
 @Composable
 private fun RecoveryCard(bestStreak: Int) {
     Box(
@@ -483,69 +291,42 @@ private fun RecoveryCard(bestStreak: Int) {
             .clip(RoundedCornerShape(18.dp))
             .background(Color(0xFF0D0500))
             .border(1.dp, Color(0xFF3A1A00), RoundedCornerShape(18.dp))
-            .padding(18.dp),
+            .padding(18.dp)
     ) {
         Column {
-            Text(
-                "⚡ BOUNCE BACK",
-                fontSize   = 11.sp,
-                color      = WarningAmber,
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 2.sp,
-            )
+            Text("⚡ BOUNCE BACK", fontSize = 11.sp, color = Color(0xFFFF9800),
+                fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
             Spacer(Modifier.height(6.dp))
             Text(
-                "Yesterday was a loss. Today is a new war.\nYour best was $bestStreak days — do it again.",
+                "Yesterday was a loss. Today is a new war.\nYour best streak was $bestStreak days — you've done it before. Do it again.",
                 fontSize   = 13.sp,
                 color      = TextSecondary,
-                lineHeight = 20.sp,
+                lineHeight = 20.sp
             )
         }
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// SECTION LABEL
-// ─────────────────────────────────────────────────────────────
-@Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text          = text,
-        fontSize      = 10.sp,
-        fontWeight    = FontWeight.ExtraBold,
-        color         = TextTertiary,
-        letterSpacing = 3.sp,
-        modifier      = Modifier.fillMaxWidth(),
-    )
-}
-
-// ─────────────────────────────────────────────────────────────
-// BATTLE CALENDAR — unchanged logic, moved to bottom
-// ─────────────────────────────────────────────────────────────
+// ── Calendar ──────────────────────────────────────────────────
 @Composable
 fun BattleCalendar(state: WarriorState) {
-    val today       = remember { LocalDate.now() }
-    val firstDay    = remember { today.withDayOfMonth(1) }
+    val today      = remember { LocalDate.now() }
+    val firstDay   = remember { today.withDayOfMonth(1) }
     val startOffset = remember { firstDay.dayOfWeek.value % 7 }
     val daysInMonth = remember { today.month.length(today.isLeapYear) }
-    val fmt         = remember { DateTimeFormatter.ISO_LOCAL_DATE }
+    val fmt        = remember { DateTimeFormatter.ISO_LOCAL_DATE }
 
-    val dowHeaders = listOf("SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT")
+    val dowHeaders = listOf("SUN","MON","TUE","WED","THU","FRI","SAT")
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         dowHeaders.forEach { d ->
-            Text(
-                d,
-                modifier   = Modifier.weight(1f),
-                fontSize   = 7.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color      = TextTertiary,
-                textAlign  = TextAlign.Center,
-            )
+            Text(d, modifier = Modifier.weight(1f), fontSize = 7.sp,
+                fontWeight = FontWeight.ExtraBold, color = TextTertiary,
+                textAlign  = TextAlign.Center)
         }
     }
     Spacer(Modifier.height(6.dp))
 
-    val cells = List(startOffset) { null } + (1..daysInMonth).toList()
+    val cells: List<Int?> = List(startOffset) { null } + (1..daysInMonth).toList()
     cells.chunked(7).forEach { row ->
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             (row + List(7 - row.size) { null }).forEach { day ->
@@ -558,7 +339,7 @@ fun BattleCalendar(state: WarriorState) {
                     val bg = when (data?.status) {
                         "clean"  -> VictoryGreen
                         "failed" -> WarriorRed
-                        else     -> ElevatedCard
+                        else     -> CardBlack
                     }
                     val tc = when (data?.status) {
                         "clean"  -> Color.Black
@@ -575,7 +356,7 @@ fun BattleCalendar(state: WarriorState) {
                                     Modifier.border(1.5.dp, WarriorRed, RoundedCornerShape(8.dp))
                                 else Modifier
                             ),
-                        contentAlignment = Alignment.Center,
+                        contentAlignment = Alignment.Center
                     ) {
                         Text("$day", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = tc)
                     }
@@ -584,61 +365,56 @@ fun BattleCalendar(state: WarriorState) {
         }
         Spacer(Modifier.height(4.dp))
     }
-
-    // Legend
-    Spacer(Modifier.height(10.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        LegendItem(color = VictoryGreen, label = "Win")
-        LegendItem(color = WarriorRed,   label = "Relapse")
-        LegendItem(color = ElevatedCard, label = "Not logged", border = true)
-    }
 }
 
+// ── Legend item ───────────────────────────────────────────────
 @Composable
 private fun LegendItem(color: Color, label: String, border: Boolean = false) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier.size(8.dp).clip(RoundedCornerShape(2.dp))
                 .background(color)
-                .then(if (border) Modifier.border(1.dp, BorderColor, RoundedCornerShape(2.dp)) else Modifier),
+                .then(if (border) Modifier.border(1.dp, BorderColor, RoundedCornerShape(2.dp)) else Modifier)
         )
         Spacer(Modifier.width(4.dp))
         Text(label, fontSize = 9.sp, color = TextTertiary, fontWeight = FontWeight.Bold)
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// REUSABLE GLASS CARD — kept for external use (AnalysisScreen)
-// ─────────────────────────────────────────────────────────────
+// ── Glass Card ────────────────────────────────────────────────
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
-    content: @Composable ColumnScope.() -> Unit,
+    content: @Composable ColumnScope.() -> Unit
 ) {
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(22.dp))
-            .background(SurfaceDark)
+            .background(GlassSurface)
             .border(1.dp, BorderColor, RoundedCornerShape(22.dp))
             .padding(20.dp),
-        content = content,
+        content = content
     )
 }
 
+// ── Stat card ─────────────────────────────────────────────────
 @Composable
 fun StatCard(
-    modifier:   Modifier = Modifier,
-    label:      String,
-    value:      String,
-    sub:        String,
-    valueColor: Color,
+    modifier: Modifier = Modifier,
+    label: String,
+    value: String,
+    sub: String,
+    valueColor: Color
 ) {
     GlassCard(modifier = modifier) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-            Text(label, fontSize = 8.sp, color = TextTertiary, fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+            Text(label, fontSize = 8.sp, color = TextTertiary,
+                fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
             Spacer(Modifier.height(4.dp))
-            Text(value, fontSize = 48.sp, fontWeight = FontWeight.Black, color = valueColor, lineHeight = 50.sp)
-            Text(sub, fontSize = 8.sp, color = TextTertiary, fontWeight = FontWeight.Black, letterSpacing = 3.sp)
+            Text(value, fontSize = 48.sp, fontWeight = FontWeight.Black,
+                color = valueColor, lineHeight = 50.sp)
+            Text(sub, fontSize = 8.sp, color = TextTertiary,
+                fontWeight = FontWeight.Black, letterSpacing = 3.sp)
         }
     }
 }
