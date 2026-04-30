@@ -51,6 +51,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tanay.warrior.data.ViewState
 import com.tanay.warrior.ui.screens.*
 import com.tanay.warrior.ui.theme.*
+import com.tanay.warrior.ui.components.*
 import kotlin.math.abs
 
 class MainActivity : ComponentActivity() {
@@ -291,6 +292,8 @@ fun WarriorApp(
     var showPanicModal   by remember { mutableStateOf(false) }
     var trollMessage     by remember { mutableStateOf("") }
     var fingerX          by remember { mutableStateOf(-1f) }
+    // v4.0.2 — Toast state (triggered only on Clean / Fail button press)
+    val toastState       = rememberToastState()
 
     BackHandler {
         when {
@@ -336,7 +339,15 @@ fun WarriorApp(
                         ViewState.DASHBOARD -> DashboardScreen(
                             state          = state,
                             onPanicClick   = { showPanicModal = true },
-                            onVictoryClick = { onLogVictory() },
+                            onVictoryClick = {
+                                onLogVictory()
+                                // v4.0.2 — Toast: triggered on Clean press
+                                toastState.show(ToastData(
+                                    title       = "Day Logged Clean ✅",
+                                    description = "Stay strong, warrior. Keep the streak alive.",
+                                    variant     = ToastVariant.SUCCESS
+                                ))
+                            },
                             onRelapseClick = {
                                 trollMessage = trollMessages.random()
                                 showRelapseModal = true
@@ -370,12 +381,23 @@ fun WarriorApp(
                     onDismiss    = { showRelapseModal = false },
                     onConfess    = { url ->
                         val ok = onLogRelapse(url)
-                        if (ok) showRelapseModal = false
+                        if (ok) {
+                            showRelapseModal = false
+                            // v4.0.2 — Toast: triggered on Fail confirmation
+                            toastState.show(ToastData(
+                                title       = "Relapse Logged ❌",
+                                description = "Count recorded. Tomorrow is a new war.",
+                                variant     = ToastVariant.DESTRUCTIVE
+                            ))
+                        }
                         ok
                     }
                 )
             }
             if (showPanicModal) PanicModal(onDismiss = { showPanicModal = false })
+
+            // v4.0.2 — Toast overlay (renders on top of all content)
+            ToastViewport(state = toastState, position = ToastPosition.TOP_RIGHT)
         }
     }
 }
