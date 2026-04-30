@@ -7,6 +7,8 @@ import android.content.Intent
 import android.os.Build
 import java.util.Calendar
 import kotlin.random.Random
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 object WarriorScheduler {
 
@@ -85,7 +87,46 @@ object WarriorScheduler {
         context.sendBroadcast(intent)
     }
 
-    private fun <T : Any> schedule(
+    /**
+     * v4.0.2 — Relapse-aware rescheduling.
+     *
+     * When the user logs a fail, the last-fail time (ISO-8601) is passed here.
+     * The next evening notification is cancelled and rescheduled to fire at the
+     * SAME HOUR:MINUTE tomorrow (or today if that time has not yet passed).
+     * This targets the user's personal high-risk window instead of the generic 20:xx.
+     *
+     * @param lastFailTimeIso ISO-8601 datetime string e.g. 2026-04-30T21:45:00
+     */
+    fun rescheduleEveningToFailTime(context: Context, lastFailTimeIso: String) {
+        try {
+            val failTime = LocalDateTime.parse(
+                lastFailTimeIso,
+                DateTimeFormatter.ISO_LOCAL_DATE_TIME
+            )
+            val cal = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, failTime.hour)
+                set(Calendar.MINUTE,      failTime.minute)
+                set(Calendar.SECOND,      0)
+                // Always push to tomorrow so the reminder fires BEFORE the next
+                // potential relapse, not after today's already-logged one.
+                add(Calendar.DAY_OF_YEAR, 1)
+            }
+            // Cancel the current evening alarm and replace it
+            val am = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+            val intent = android.content.Intent(context, EveningReceiver::class.java)
+            val existing = android.app.PendingIntent.getBroadcast(
+                context, 103, intent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            )
+            am.cancel(existing)
+            schedule(context, cal.timeInMillis, 103, EveningReceiver::class.java)
+        } catch (_: Exception) {
+            // If parsing fails, fall back to a standard evening reschedule
+            scheduleEvening(context)
+        }
+    }
+
+        private fun <T : Any> schedule(
         context: Context, triggerAtMillis: Long,
         requestCode: Int, receiverClass: Class<T>
     ) {
