@@ -293,8 +293,20 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         val active = _state.value.activeHabit ?: return false
         val newTriggers = active.triggers.toMutableMap()
         if (domain != "unknown") newTriggers[domain] = (newTriggers[domain] ?: 0) + 1
+
+        // v4.0.2 — relapse counter: increment count and stamp the exact time
+        val nowTime = java.time.LocalDateTime.now()
+            .format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+        val existing = active.history[today]
+        val newRelapseCount = (existing?.relapseCount ?: 0) + 1
+        val updatedDayData  = DayData(
+            status       = "failed",
+            site         = domain,
+            relapseCount = newRelapseCount,
+            lastFailTime = nowTime
+        )
         val updated = active.copy(
-            history  = active.history + (today to DayData(status = "failed", site = domain)),
+            history  = active.history + (today to updatedDayData),
             triggers = newTriggers
         )
         val new = _state.value.withUpdatedHabit(updated)
@@ -302,6 +314,12 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             repo.saveState(new)
             com.tanay.warrior.widget.StreakWidget().updateAll(getApplication())
+            // v4.0.2 — reschedule the evening notification to the same clock time
+            // the user last failed, so tomorrow's reminder fires at their personal
+            // high-risk hour instead of a fixed 20:xx slot.
+            com.tanay.warrior.notifications.WarriorScheduler.rescheduleEveningToFailTime(
+                getApplication(), nowTime
+            )
         }
         vibrate(longArrayOf(0, 500))
         true
