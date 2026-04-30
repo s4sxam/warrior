@@ -9,6 +9,10 @@ package com.tanay.warrior.data
 //                  and streak. activeHabitId selects which habit is shown.
 //                  The leaderboard and bot simulation are always tied to the
 //                  primary (first) habit for compatibility.
+// [NEW]    v4.0.2: DayData extended with relapseCount (number of fails on that day)
+//                  and lastFailTime (ISO-8601 datetime of the most recent fail).
+//                  WarriorScheduler can use lastFailTime to reschedule the next
+//                  evening notification to fire at that exact time of day.
 
 import kotlinx.serialization.Serializable
 import java.time.LocalDate
@@ -20,8 +24,11 @@ fun todayKey(): String = LocalDate.now().format(DATE_FORMATTER)
 
 @Serializable
 data class DayData(
-    val status: String,   // "clean" | "failed"
-    val site: String? = null
+    val status: String,        // "clean" | "failed"
+    val site: String? = null,
+    // v4.0.2 — relapse counter
+    val relapseCount: Int = 0,         // how many times the user failed this day
+    val lastFailTime: String? = null   // ISO-8601 datetime of the last fail e.g. "2026-04-30T21:45:00"
 )
 
 // ── v2.0.0: User profile ──────────────────────────────────────────────────────
