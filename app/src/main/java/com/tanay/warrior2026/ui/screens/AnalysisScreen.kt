@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tanay.warrior.data.WarriorState
 import com.tanay.warrior.ui.theme.*
+import com.tanay.warrior.ui.components.*
 import java.time.LocalDate
 import java.time.Month
 import java.time.format.DateTimeFormatter
@@ -37,7 +38,9 @@ private data class MonthStats(
     val victories: Int,
     val defeats: Int,
     val logged: Int,
-    val consistency: Int  // 0–100
+    val consistency: Int,   // 0–100
+    // v4.0.2 — total relapse events this month (one day can have >1 if user fails multiple times)
+    val totalRelapses: Int = 0
 )
 
 private fun buildMonthStats(state: WarriorState): List<MonthStats> {
@@ -55,14 +58,25 @@ private fun buildMonthStats(state: WarriorState): List<MonthStats> {
                 "failed" -> d++
             }
         }
+        // v4.0.2 — accumulate relapseCount from each failed day
+        var totalRelapses = 0
+        (1..daysInMonth).forEach { day ->
+            val key = target.withDayOfMonth(day).format(fmt)
+            val dayData = state.history[key]
+            if (dayData?.status == "failed") {
+                totalRelapses += dayData.relapseCount.coerceAtLeast(1)
+            }
+        }
+
         if (v + d == 0) null
         else MonthStats(
-            month = target.month,
-            year  = target.year,
-            victories = v,
-            defeats = d,
-            logged = v + d,
-            consistency = ((v.toFloat() / (v + d)) * 100).toInt()
+            month         = target.month,
+            year          = target.year,
+            victories     = v,
+            defeats       = d,
+            logged        = v + d,
+            consistency   = ((v.toFloat() / (v + d)) * 100).toInt(),
+            totalRelapses = totalRelapses
         )
     }
 }
@@ -263,83 +277,91 @@ private fun MiniStatCard(modifier: Modifier, value: String, label: String, color
     }
 }
 
+// v4.0.2 — MonthlyBarChart now uses ChartContainer + ChartLegendContent
+//           from Chart.kt (Kotlin equivalent of the Recharts-based TS chart system)
+
+private val monthlyChartConfig: ChartConfig = mapOf(
+    "victories" to ChartSeriesConfig(label = "Clean",  color = ChartClean),
+    "defeats"   to ChartSeriesConfig(label = "Failed", color = ChartFailed)
+)
+
 @Composable
 private fun MonthlyBarChart(months: List<MonthStats>) {
     val maxV = remember(months) { months.maxOf { it.victories }.coerceAtLeast(1).toFloat() }
     val animProgress by animateFloatAsState(
-        targetValue = 1f,
+        targetValue   = 1f,
         animationSpec = tween(1000, easing = EaseOutCubic),
-        label = "bar_chart"
+        label         = "bar_chart"
     )
-    // Trigger animation on first composition
-    var started by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { started = true }
+    LaunchedEffect(Unit) { /* trigger recomposition to kick off animation */ }
 
-    val chartHeight = 120.dp
-    Box(modifier = Modifier.fillMaxWidth().height(chartHeight + 32.dp)) {
-        Canvas(modifier = Modifier.fillMaxWidth().height(chartHeight).align(Alignment.TopCenter)) {
-            val barWidth = (size.width / months.size) * 0.55f
-            val gap      = (size.width / months.size) * 0.45f / 2f
-            val slotW    = size.width / months.size
+    // ChartContainer provides config via CompositionLocal — mirrors <ChartContext.Provider>
+    ChartContainer(
+        config   = monthlyChartConfig,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        val chartHeight = 120.dp
+        Box(modifier = Modifier.fillMaxSize()) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(chartHeight)
+                    .align(Alignment.TopCenter)
+            ) {
+                val barWidth = (size.width / months.size) * 0.55f
+                val gap      = (size.width / months.size) * 0.45f / 2f
+                val slotW    = size.width / months.size
 
-            months.forEachIndexed { i, m ->
-                val vFrac  = (m.victories.toFloat() / maxV) * animProgress
-                val dFrac  = (m.defeats.toFloat() / maxV) * animProgress
-                val x      = i * slotW + gap
-                val barW2  = barWidth / 2f
+                months.forEachIndexed { i, m ->
+                    val vFrac = (m.victories.toFloat() / maxV) * animProgress
+                    val dFrac = (m.defeats.toFloat() / maxV) * animProgress
+                    val x     = i * slotW + gap
+                    val barW2 = barWidth / 2f
 
-                // Victory bar (left half)
-                drawRoundRect(
-                    color  = ChartClean,
-                    topLeft = Offset(x, size.height * (1f - vFrac)),
-                    size   = Size(barW2 - 2f, size.height * vFrac),
-                    cornerRadius = CornerRadius(4f, 4f)
-                )
-                // Defeat bar (right half)
-                drawRoundRect(
-                    color  = ChartFailed,
-                    topLeft = Offset(x + barW2 + 2f, size.height * (1f - dFrac)),
-                    size   = Size(barW2 - 2f, size.height * dFrac),
-                    cornerRadius = CornerRadius(4f, 4f)
-                )
+                    // Victory bar (left half)
+                    drawRoundRect(
+                        color        = ChartClean,
+                        topLeft      = Offset(x, size.height * (1f - vFrac)),
+                        size         = Size(barW2 - 2f, size.height * vFrac),
+                        cornerRadius = CornerRadius(4f, 4f)
+                    )
+                    // Defeat bar (right half)
+                    drawRoundRect(
+                        color        = ChartFailed,
+                        topLeft      = Offset(x + barW2 + 2f, size.height * (1f - dFrac)),
+                        size         = Size(barW2 - 2f, size.height * dFrac),
+                        cornerRadius = CornerRadius(4f, 4f)
+                    )
+                }
             }
-        }
 
-        // X-axis labels
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomCenter),
-            horizontalArrangement = Arrangement.SpaceAround
-        ) {
-            months.forEach { m ->
-                Text(
-                    m.month.getDisplayName(TextStyle.SHORT, Locale.US).uppercase(),
-                    fontSize = 8.sp,
-                    color = TextTertiary,
-                    fontWeight = FontWeight.ExtraBold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.weight(1f)
-                )
+            // X-axis month labels
+            Row(
+                modifier              = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter),
+                horizontalArrangement = Arrangement.SpaceAround
+            ) {
+                months.forEach { m ->
+                    Text(
+                        text       = m.month.getDisplayName(TextStyle.SHORT, Locale.US).uppercase(),
+                        fontSize   = 8.sp,
+                        color      = TextTertiary,
+                        fontWeight = FontWeight.ExtraBold,
+                        textAlign  = TextAlign.Center,
+                        modifier   = Modifier.weight(1f)
+                    )
+                }
             }
         }
     }
 
-    // Legend
+    // ChartLegendContent — mirrors <ChartLegendContent> / <ChartLegend />
     Spacer(Modifier.height(8.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        LegendDot(color = ChartClean, label = "Clean")
-        LegendDot(color = ChartFailed, label = "Failed")
-    }
-}
-
-@Composable
-private fun LegendDot(color: Color, label: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(color))
-        Spacer(Modifier.width(4.dp))
-        Text(label, fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
-    }
+    ChartLegendContent(
+        config        = monthlyChartConfig,
+        verticalAlign = LegendAlign.BOTTOM
+    )
 }
 
 @Composable
@@ -401,9 +423,12 @@ private fun MonthRow(m: MonthStats) {
                 m.month.getDisplayName(TextStyle.SHORT, Locale.US).uppercase() + " ${m.year}",
                 fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextSecondary
             )
+            // v4.0.2 — show relapse count when a day had multiple relapses
+            val relapseLabel = if (m.totalRelapses > m.defeats) " · ${m.totalRelapses}×" else ""
             Text(
-                "${m.victories}W · ${m.defeats}L · $pct%",
+                "${m.victories}W · ${m.defeats}L · $pct%$relapseLabel",
                 fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextTertiary
+            )
             )
         }
         Spacer(Modifier.height(5.dp))
