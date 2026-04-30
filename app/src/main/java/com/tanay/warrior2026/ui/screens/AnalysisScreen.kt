@@ -429,7 +429,6 @@ private fun MonthRow(m: MonthStats) {
                 "${m.victories}W · ${m.defeats}L · $pct%$relapseLabel",
                 fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextTertiary
             )
-            )
         }
         Spacer(Modifier.height(5.dp))
         Box(
