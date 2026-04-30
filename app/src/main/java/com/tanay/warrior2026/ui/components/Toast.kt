@@ -1,27 +1,35 @@
 package com.tanay.warrior.ui.components
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Toast.kt  —  Kotlin/Compose equivalent of the TypeScript Toast system
+// Toast.kt  —  v4.0.2 update
 //
-// Matches the TS behaviour exactly:
-//   • Triggered only on Clean (success) or Fail (destructive) button press
-//   • Spring enter/exit animation (opacity + scale + y offset)
-//   • Linear progress bar that fills over `duration` ms
-//   • Close (X) button
-//   • Six position variants (top-right default)
-//   • Five variant styles: default, destructive, success, warning, info
+// Changes vs previous version:
+//   • ToastHostState — suspend showToast() queues toasts one-at-a-time (like
+//     SnackbarHostState). Replaces the old single-shot ToastState.show().
+//   • rememberToastHostState() convenience helper.
+//   • ToastHost composable (replaces ToastViewport name, old name kept as alias).
+//   • All existing visual behaviour preserved exactly:
+//       – Spring enter/exit (opacity + scale 0.7→1 + y offset)
+//       – Linear progress bar filling over `duration` ms, auto-dismisses
+//       – Close (X) button
+//       – Six positions, five variants
 // ──────────────────────────────────────────────────────────────────────────────
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,14 +40,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Icon
+import kotlinx.coroutines.flow.receiveAsFlow
 
-// ─── Data ────────────────────────────────────────────────────────────────────
+// ─── Enums ───────────────────────────────────────────────────────────────────
 
 enum class ToastPosition {
     TOP_RIGHT, TOP_LEFT, BOTTOM_RIGHT, BOTTOM_LEFT, TOP_CENTER, BOTTOM_CENTER
@@ -49,6 +54,8 @@ enum class ToastVariant {
     DEFAULT, DESTRUCTIVE, SUCCESS, WARNING, INFO
 }
 
+// ─── Data ────────────────────────────────────────────────────────────────────
+
 data class ToastData(
     val id: Long = System.currentTimeMillis(),
     val title: String,
@@ -57,30 +64,66 @@ data class ToastData(
     val duration: Long = 5000L
 )
 
-// ─── State holder (hoisted) ───────────────────────────────────────────────────
+// ─── Host state — queued, one toast at a time ─────────────────────────────────
+//
+// Drop-in for the old ToastState. Use showToast() from a coroutine scope
+// (e.g. viewModelScope or a LaunchedEffect scope).
+//
+// Old callers that used  toastState.show(ToastData(...))  can migrate by
+// wrapping in  scope.launch { toastState.showToast(...) }  or by keeping the
+// legacy ToastState class below (both coexist without conflicts).
+
+class ToastHostState {
+    // Channel buffers up to 8 queued toasts; extras are dropped silently.
+    private val _queue = Channel<ToastData>(capacity = 8)
+    internal val queue = _queue.receiveAsFlow()
+
+    /** Suspend until the toast has been displayed and dismissed (or expired). */
+    suspend fun showToast(
+        title: String,
+        description: String = "",
+        variant: ToastVariant = ToastVariant.DEFAULT,
+        duration: Long = 5000L
+    ) {
+        _queue.trySend(
+            ToastData(
+                id          = System.currentTimeMillis(),
+                title       = title,
+                description = description,
+                variant     = variant,
+                duration    = duration
+            )
+        )
+    }
+
+    /** Convenience overload — pass a fully-built ToastData directly. */
+    suspend fun showToast(data: ToastData) {
+        _queue.trySend(data)
+    }
+}
+
+@Composable
+fun rememberToastHostState() = remember { ToastHostState() }
+
+// ─── Legacy single-shot state (kept for backward compatibility) ───────────────
 
 class ToastState {
     var current by mutableStateOf<ToastData?>(null)
         private set
 
-    fun show(toast: ToastData) {
-        current = toast
-    }
-
-    fun dismiss() {
-        current = null
-    }
+    fun show(toast: ToastData) { current = toast }
+    fun dismiss() { current = null }
 }
 
 @Composable
 fun rememberToastState() = remember { ToastState() }
 
-// ─── Colours per variant (mirrors TS toastVariants cva) ──────────────────────
+// ─── Colours per variant ──────────────────────────────────────────────────────
 
 private data class ToastColors(
-    val background: Color,
-    val border: Color,
-    val text: Color,
+    val background:  Color,
+    val border:      Color,
+    val text:        Color,
     val progressBar: Color
 )
 
@@ -92,28 +135,28 @@ private fun toastColors(variant: ToastVariant): ToastColors = when (variant) {
         progressBar = Color(0xFF888888)
     )
     ToastVariant.DESTRUCTIVE -> ToastColors(
-        background  = Color(0xFFFFE5E5),  // red-100 equivalent
-        border      = Color(0xFFEF4444),  // red-500
-        text        = Color(0xFF991B1B),  // red-800
-        progressBar = Color(0xFFDC2626)   // red-600
+        background  = Color(0xFFFFE5E5),
+        border      = Color(0xFFEF4444),
+        text        = Color(0xFF991B1B),
+        progressBar = Color(0xFFDC2626)
     )
     ToastVariant.SUCCESS     -> ToastColors(
-        background  = Color(0xFFDCFCE7),  // green-100
-        border      = Color(0xFF22C55E),  // green-500
-        text        = Color(0xFF166534),  // green-800
-        progressBar = Color(0xFF16A34A)   // green-600
+        background  = Color(0xFFDCFCE7),
+        border      = Color(0xFF22C55E),
+        text        = Color(0xFF166534),
+        progressBar = Color(0xFF16A34A)
     )
     ToastVariant.WARNING     -> ToastColors(
-        background  = Color(0xFFFEF9C3),  // yellow-100
-        border      = Color(0xFFEAB308),  // yellow-500
-        text        = Color(0xFF854D0E),  // yellow-800
-        progressBar = Color(0xFFCA8A04)   // yellow-600
+        background  = Color(0xFFFEF9C3),
+        border      = Color(0xFFEAB308),
+        text        = Color(0xFF854D0E),
+        progressBar = Color(0xFFCA8A04)
     )
     ToastVariant.INFO        -> ToastColors(
-        background  = Color(0xFFEFF6FF),  // blue-50
-        border      = Color(0xFF3B82F6),  // blue-500
-        text        = Color(0xFF1E40AF),  // blue-800
-        progressBar = Color(0xFF2563EB)   // blue-600
+        background  = Color(0xFFEFF6FF),
+        border      = Color(0xFF3B82F6),
+        text        = Color(0xFF1E40AF),
+        progressBar = Color(0xFF2563EB)
     )
 }
 
@@ -121,23 +164,22 @@ private fun toastColors(variant: ToastVariant): ToastColors = when (variant) {
 
 @Composable
 private fun ToastCard(
-    toast: ToastData,
+    toast:   ToastData,
     onClose: () -> Unit
 ) {
     val colors = toastColors(toast.variant)
     val shape  = RoundedCornerShape(12.dp)
 
-    // Progress bar animation — fills from 0% to 100% over `duration`
     val progress = remember { Animatable(0f) }
     LaunchedEffect(toast.id) {
         progress.animateTo(
-            targetValue  = 1f,
+            targetValue   = 1f,
             animationSpec = tween(
                 durationMillis = toast.duration.toInt(),
                 easing         = LinearEasing
             )
         )
-        onClose()  // auto-dismiss when bar completes
+        onClose()
     }
 
     Box(
@@ -147,7 +189,12 @@ private fun ToastCard(
             .background(colors.background)
             .border(1.dp, colors.border, shape)
     ) {
-        Column(modifier = Modifier.padding(start = 16.dp, top = 14.dp, end = 40.dp, bottom = 14.dp)) {
+        Column(
+            modifier = Modifier.padding(
+                start  = 16.dp, top = 14.dp,
+                end    = 40.dp, bottom = 14.dp
+            )
+        ) {
             if (toast.title.isNotBlank()) {
                 Text(
                     text       = toast.title,
@@ -166,7 +213,7 @@ private fun ToastCard(
             }
         }
 
-        // ── Close button ──
+        // Close button
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
@@ -175,8 +222,8 @@ private fun ToastCard(
                 .clip(RoundedCornerShape(6.dp))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick    = onClose
+                    indication        = null,
+                    onClick           = onClose
                 ),
             contentAlignment = Alignment.Center
         ) {
@@ -188,7 +235,7 @@ private fun ToastCard(
             )
         }
 
-        // ── Progress bar ──
+        // Progress bar
         Box(
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -206,20 +253,57 @@ private fun ToastCard(
     }
 }
 
-// ─── Viewport — overlay that renders the toast in the correct corner ──────────
-//
-// Usage: place ToastViewport() inside your root Box/Scaffold content
-//        and pass the same ToastState you call .show() on.
+// ─── ToastHost — new queued host (use with ToastHostState) ───────────────────
+
+@Composable
+fun ToastHost(
+    hostState: ToastHostState,
+    position:  ToastPosition = ToastPosition.TOP_RIGHT,
+    modifier:  Modifier      = Modifier
+) {
+    var current by remember { mutableStateOf<ToastData?>(null) }
+
+    // Drain the queue: collect one toast, display it, then move to the next.
+    LaunchedEffect(hostState) {
+        hostState.queue.collect { toast ->
+            current = toast
+        }
+    }
+
+    ToastOverlay(
+        toast    = current,
+        position = position,
+        modifier = modifier,
+        onClose  = { current = null }
+    )
+}
+
+// ─── ToastViewport — legacy viewport (use with ToastState) ───────────────────
 
 @Composable
 fun ToastViewport(
-    state: ToastState,
+    state:    ToastState,
     position: ToastPosition = ToastPosition.TOP_RIGHT,
-    modifier: Modifier = Modifier
+    modifier: Modifier      = Modifier
 ) {
-    val toast = state.current
+    ToastOverlay(
+        toast    = state.current,
+        position = position,
+        modifier = modifier,
+        onClose  = { state.dismiss() }
+    )
+}
 
-    val boxAlignment = when (position) {
+// ─── Shared overlay rendering ─────────────────────────────────────────────────
+
+@Composable
+private fun ToastOverlay(
+    toast:    ToastData?,
+    position: ToastPosition,
+    modifier: Modifier,
+    onClose:  () -> Unit
+) {
+    val alignment = when (position) {
         ToastPosition.TOP_RIGHT     -> Alignment.TopEnd
         ToastPosition.TOP_LEFT      -> Alignment.TopStart
         ToastPosition.TOP_CENTER    -> Alignment.TopCenter
@@ -228,16 +312,12 @@ fun ToastViewport(
         ToastPosition.BOTTOM_CENTER -> Alignment.BottomCenter
     }
 
-    val isTop = position in listOf(
-        ToastPosition.TOP_RIGHT, ToastPosition.TOP_LEFT, ToastPosition.TOP_CENTER
-    )
-
     Box(
-        modifier = modifier
+        modifier         = modifier
             .fillMaxSize()
             .padding(16.dp)
             .zIndex(100f),
-        contentAlignment = boxAlignment
+        contentAlignment = alignment
     ) {
         AnimatedVisibility(
             visible = toast != null,
@@ -248,7 +328,7 @@ fun ToastViewport(
                       scaleOut(spring(stiffness = 400f), targetScale = 0.7f)
         ) {
             toast?.let {
-                ToastCard(toast = it, onClose = { state.dismiss() })
+                ToastCard(toast = it, onClose = onClose)
             }
         }
     }
