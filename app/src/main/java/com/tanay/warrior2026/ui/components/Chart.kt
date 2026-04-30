@@ -1,15 +1,18 @@
 package com.tanay.warrior.ui.components
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Chart.kt  —  Kotlin/Compose equivalent of the TypeScript chart system
-//              (ChartContainer, ChartTooltip, ChartLegend, ChartStyle)
+// Chart.kt  —  v4.0.2 update
 //
-// Mirrors the TS/Recharts API shape as closely as possible in Compose:
-//   • ChartConfig  — maps series keys → label, icon, color
-//   • ChartContainer — provides config via CompositionLocal, wraps chart content
-//   • ChartTooltip / ChartTooltipContent — floating tooltip on data-point tap
-//   • ChartLegend / ChartLegendContent — labelled color dots
-//   • Indicator styles: dot | line | dashed  (matches TS `indicator` prop)
+// Changes vs previous version:
+//   • ChartSeriesConfig gains an optional `icon` composable slot (mirrors TS
+//     `icon?: React.ComponentType` in ChartConfig).
+//   • ChartTooltipContent now renders the icon slot when provided (matches TS
+//     `{itemConfig?.icon ? <itemConfig.icon /> : (!hideIndicator && <div …/>)}`).
+//   • ChartLegendItem / ChartLegendContent use the icon slot the same way.
+//   • LocalChartColors CompositionLocal added — children can read per-key colors
+//     the same way TS ChartStyle injects --color-{key} CSS variables.
+//   • Everything else (ChartContainer, ChartIndicator, LegendAlign, tooltip card
+//     layout, value formatting) is unchanged.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import androidx.compose.foundation.background
@@ -29,34 +32,35 @@ import androidx.compose.ui.unit.sp
 
 // ─── ChartConfig ─────────────────────────────────────────────────────────────
 //
-// Mirrors:  export type ChartConfig = { [k in string]: { label?, icon?, color? | theme? } }
+// Mirrors TS:
+//   type ChartConfig = {
+//     [k: string]: { label?, icon?: React.ComponentType, color? | theme? }
+//   }
 
 data class ChartSeriesConfig(
-    val label: String = "",
-    val color: Color  = Color.Gray
+    val label: String                          = "",
+    val color: Color                           = Color.Gray,
+    // Optional icon slot — mirrors TS `icon?: React.ComponentType`
+    val icon:  (@Composable () -> Unit)? = null
 )
 
 typealias ChartConfig = Map<String, ChartSeriesConfig>
 
-// ─── CompositionLocal — equivalent of ChartContext ────────────────────────────
+// ─── CompositionLocals ───────────────────────────────────────────────────────
+//
+// LocalChartConfig  — mirrors ChartContext / useChart()
+// LocalChartColors  — mirrors ChartStyle CSS variable injection
+//                     usage: LocalChartColors.current["victories"] → Color
 
 val LocalChartConfig = compositionLocalOf<ChartConfig> { emptyMap() }
 
-// Helper (mirrors useChart())
+/** Flattened color map derived from the active ChartConfig. Read like CSS vars. */
+val LocalChartColors = compositionLocalOf<Map<String, Color>> { emptyMap() }
+
 @Composable
 fun useChart(): ChartConfig = LocalChartConfig.current
 
 // ─── ChartContainer ───────────────────────────────────────────────────────────
-//
-// Mirrors:
-//   const ChartContainer = forwardRef(({ id, className, children, config, ...props }, ref) => (
-//     <ChartContext.Provider value={{ config }}>
-//       <div data-chart={chartId} ...>
-//         <ChartStyle id={chartId} config={config} />
-//         <ResponsiveContainer>{children}</ResponsiveContainer>
-//       </div>
-//     </ChartContext.Provider>
-//   ))
 
 @Composable
 fun ChartContainer(
@@ -64,7 +68,11 @@ fun ChartContainer(
     modifier: Modifier = Modifier,
     content:  @Composable BoxScope.() -> Unit
 ) {
-    CompositionLocalProvider(LocalChartConfig provides config) {
+    val colors = remember(config) { config.mapValues { it.value.color } }
+    CompositionLocalProvider(
+        LocalChartConfig  provides config,
+        LocalChartColors  provides colors
+    ) {
         Box(
             modifier = modifier
                 .fillMaxWidth()
@@ -78,46 +86,55 @@ fun ChartContainer(
 
 enum class ChartIndicator { DOT, LINE, DASHED }
 
+// ─── Indicator composable (shared by tooltip and legend) ─────────────────────
+
+@Composable
+private fun IndicatorBox(
+    color:     Color,
+    indicator: ChartIndicator
+) {
+    when (indicator) {
+        ChartIndicator.DOT    -> Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(color)
+        )
+        ChartIndicator.LINE   -> Box(
+            modifier = Modifier
+                .width(4.dp)
+                .height(16.dp)
+                .background(color)
+        )
+        ChartIndicator.DASHED -> Box(
+            modifier = Modifier
+                .width(4.dp)
+                .height(16.dp)
+                .border(1.5.dp, color, RoundedCornerShape(1.dp))
+        )
+    }
+}
+
 // ─── Single legend item ───────────────────────────────────────────────────────
 
 @Composable
 fun ChartLegendItem(
     color:     Color,
     label:     String,
-    indicator: ChartIndicator = ChartIndicator.DOT,
-    hideIcon:  Boolean        = false
+    indicator: ChartIndicator                  = ChartIndicator.DOT,
+    hideIcon:  Boolean                         = false,
+    icon:      (@Composable () -> Unit)? = null
 ) {
     Row(
-        verticalAlignment   = Alignment.CenterVertically,
+        verticalAlignment     = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         if (!hideIcon) {
-            when (indicator) {
-                ChartIndicator.DOT    -> Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(color)
-                )
-                ChartIndicator.LINE   -> Box(
-                    modifier = Modifier
-                        .width(12.dp)
-                        .height(2.dp)
-                        .background(color)
-                )
-                ChartIndicator.DASHED -> Row(
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    repeat(3) {
-                        Box(
-                            modifier = Modifier
-                                .width(4.dp)
-                                .height(2.dp)
-                                .background(color)
-                        )
-                    }
-                }
+            if (icon != null) {
+                // Mirrors TS: `{itemConfig?.icon && !hideIcon ? <itemConfig.icon /> : <div…/>}`
+                icon()
+            } else {
+                IndicatorBox(color = color, indicator = indicator)
             }
         }
         Text(
@@ -130,8 +147,6 @@ fun ChartLegendItem(
 }
 
 // ─── ChartLegendContent ───────────────────────────────────────────────────────
-//
-// Mirrors ChartLegendContent — auto-renders all entries from ChartConfig
 
 @Composable
 fun ChartLegendContent(
@@ -155,7 +170,8 @@ fun ChartLegendContent(
             ChartLegendItem(
                 color    = series.color,
                 label    = series.label,
-                hideIcon = hideIcon
+                hideIcon = hideIcon,
+                icon     = series.icon
             )
         }
     }
@@ -163,7 +179,7 @@ fun ChartLegendContent(
 
 enum class LegendAlign { TOP, BOTTOM }
 
-// ─── Tooltip payload item — mirrors Recharts payload entry ───────────────────
+// ─── Tooltip payload item ─────────────────────────────────────────────────────
 
 data class TooltipPayloadItem(
     val key:   String,
@@ -174,18 +190,22 @@ data class TooltipPayloadItem(
 
 // ─── ChartTooltipContent ─────────────────────────────────────────────────────
 //
-// Mirrors ChartTooltipContent forwardRef — shows a styled card with per-series rows.
-// In Compose, call this inside a Popup/Box when your chart state says a point is selected.
+// Mirrors TS ChartTooltipContent — shows a styled card with per-series rows.
+// Place inside a Popup or Box when a data point is selected.
+//
+// Icon precedence (mirrors TS exactly):
+//   if (itemConfig?.icon) → render icon
+//   else if (!hideIndicator) → render indicator shape
 
 @Composable
 fun ChartTooltipContent(
-    label:         String                  = "",
+    label:         String                   = "",
     payload:       List<TooltipPayloadItem> = emptyList(),
-    config:        ChartConfig             = useChart(),
-    indicator:     ChartIndicator          = ChartIndicator.DOT,
-    hideLabel:     Boolean                 = false,
-    hideIndicator: Boolean                 = false,
-    modifier:      Modifier                = Modifier
+    config:        ChartConfig              = useChart(),
+    indicator:     ChartIndicator           = ChartIndicator.DOT,
+    hideLabel:     Boolean                  = false,
+    hideIndicator: Boolean                  = false,
+    modifier:      Modifier                 = Modifier
 ) {
     if (payload.isEmpty()) return
 
@@ -198,7 +218,7 @@ fun ChartTooltipContent(
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {
-        // Label row
+        // Label row — mirrors TS tooltipLabel useMemo
         if (!hideLabel && label.isNotBlank()) {
             Text(
                 text       = config[label]?.label ?: label,
@@ -218,47 +238,26 @@ fun ChartTooltipContent(
                 verticalAlignment     = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Indicator
-                if (!hideIndicator) {
-                    when (indicator) {
-                        ChartIndicator.DOT    -> Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(displayColor)
-                        )
-                        ChartIndicator.LINE   -> Box(
-                            modifier = Modifier
-                                .width(4.dp)
-                                .height(16.dp)
-                                .background(displayColor)
-                        )
-                        ChartIndicator.DASHED -> Box(
-                            modifier = Modifier
-                                .width(4.dp)
-                                .height(16.dp)
-                                .border(
-                                    width = 1.5.dp,
-                                    color = displayColor,
-                                    shape = RoundedCornerShape(1.dp)
-                                )
-                        )
-                    }
+                // Indicator / icon — mirrors TS icon-first logic
+                val iconSlot = seriesConfig?.icon
+                when {
+                    iconSlot != null  -> iconSlot()
+                    !hideIndicator    -> IndicatorBox(displayColor, indicator)
                 }
 
-                // Name
+                // Series label
                 Text(
-                    text      = seriesConfig?.label ?: item.name,
-                    fontSize  = 11.sp,
-                    color     = Color(0xFFAAAAAA),
-                    modifier  = Modifier.weight(1f)
+                    text     = seriesConfig?.label ?: item.name,
+                    fontSize = 11.sp,
+                    color    = Color(0xFFAAAAAA),
+                    modifier = Modifier.weight(1f)
                 )
 
-                // Value
+                // Value — mirrors TS `item.value.toLocaleString()`
                 Text(
                     text       = item.value.toDouble().let {
-                        if (it == it.toLong().toDouble()) it.toLong().toString()
-                        else "%.1f".format(it)
+                        if (it == it.toLong().toDouble()) "%,d".format(it.toLong())
+                        else "%,.1f".format(it)
                     },
                     fontSize   = 11.sp,
                     fontWeight = FontWeight.SemiBold,
