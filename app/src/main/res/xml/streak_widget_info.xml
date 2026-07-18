@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- v4.0.0: Streak widget metadata -->
+<!-- v4.1.0: minHeight/targetCellHeight bumped slightly to fit the new Yes/No
+             quick-log button row without cramping the existing stats. -->
 <appwidget-provider
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="180dp"
-    android:minHeight="110dp"
+    android:minHeight="140dp"
     android:targetCellWidth="3"
-    android:targetCellHeight="2"
+    android:targetCellHeight="3"
     android:updatePeriodMillis="1800000"
     android:description="@string/widget_description"
     android:widgetCategory="home_screen"
