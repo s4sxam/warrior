@@ -13,6 +13,8 @@ package com.tanay.warrior.data
 //                  and lastFailTime (ISO-8601 datetime of the most recent fail).
 //                  WarriorScheduler can use lastFailTime to reschedule the next
 //                  evening notification to fire at that exact time of day.
+// [NEW]    v4.1.0: Habit.monthCleanPercent — % of the current month logged clean,
+//                  used by the widget's Yes/No quick-log stat row.
 
 import kotlinx.serialization.Serializable
 import java.time.LocalDate
@@ -71,6 +73,20 @@ data class Habit(
 
     val totalClean:  Int get() = history.values.count { it.status == "clean" }
     val totalFailed: Int get() = history.values.count { it.status == "failed" }
+
+    // v4.1.0 — % of this month (so far) logged clean. Used by the widget's
+    // quick-glance stat row. Denominator is days elapsed in the current month,
+    // not days-in-month, so it reads correctly on the 1st.
+    val monthCleanPercent: Int get() {
+        val now = LocalDate.now()
+        val daysElapsed = now.dayOfMonth
+        if (daysElapsed <= 0) return 0
+        val monthPrefix = now.format(DateTimeFormatter.ofPattern("yyyy-MM"))
+        val cleanThisMonth = history.entries.count { (date, day) ->
+            date.startsWith(monthPrefix) && day.status == "clean"
+        }
+        return (cleanThisMonth * 100) / daysElapsed
+    }
 
     fun isTodayLogged(): Boolean = history.containsKey(todayKey())
 
