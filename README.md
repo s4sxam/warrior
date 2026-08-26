@@ -55,6 +55,10 @@ Notifications push you three times a day — morning, afternoon, evening — wit
 
 The **Leaderboard** puts you against 1,050 simulated competitors across 7 world regions. They aren't bots — they behave like real people struggling with the same thing you are. See below for how this works.
 
+The **Analysis** screen also keeps a Recent Activity log — the last 10 days you logged, each with the exact clock time you tapped Victory or Relapse, not just the date.
+
+You can personalize how the app looks from the **Code** (About) screen — pick an accent color or set a photo from your gallery as the app background. See below for details.
+
 <br/>
 
 ---
@@ -91,6 +95,35 @@ The widget shows:
 Tapping the widget opens the app directly. The widget refreshes automatically every 30 minutes and updates instantly whenever you log a Victory or Relapse.
 
 **To add the widget:** long-press your home screen → Widgets → search "Warrior" → drag to your screen.
+
+<br/>
+
+---
+
+## Custom Themes
+
+Starting from v4.2.0, you can make the app look like yours.
+
+From the **Code** screen, under **Appearance**:
+
+- **Accent color** — six curated presets (Warrior Red, Victory Green, Arena Blue, Amber, Violet, Cyan), or tap **+** for a full custom color picker (hue, saturation, brightness)
+- **Background photo** — pick any photo from your gallery to use as the app's background, behind every screen
+
+Photos are copied into the app's private storage the moment you pick them, so your theme survives a reboot and keeps working even if you later delete or move the original photo from your gallery. Picking a photo uses Android's system Photo Picker — the app never gets access to your full gallery, only the one photo you choose.
+
+Tap **RESET** at any time to go back to the default red-on-black look.
+
+<br/>
+
+---
+
+## Exact Activity Timestamps
+
+Starting from v4.2.0, the app remembers not just *what day* you logged, but *what time*.
+
+Every time you tap **Victory** or **Relapse**, the exact moment is saved alongside that day's entry. The **Analysis** screen's Recent Activity list shows your last 10 logged days with that clock time — so if you check in on why you tend to slip, you can see it was 11 PM three nights running, not just "some day last week."
+
+Days logged before this update won't have a saved time — those show as *"time not recorded"* rather than a guess.
 
 <br/>
 
@@ -196,6 +229,8 @@ Most habit apps are built to keep you opening the app. Warrior 2026 is built to 
 | No competition | 1,050 simulated human-like rivals across 7 regions |
 | Single habit only | Track as many habits as you want |
 | No widget | Home screen streak widget — no app open needed |
+| One fixed look for everyone | Custom accent color or your own photo as the background |
+| Date-only history | Exact clock time for every logged Victory or Relapse |
 
 The notification system doesn't fire at 2 AM. The relapse modal has a troll message. The streak ring counts up from zero every launch so you *feel* how many days you've built. These are intentional decisions, not accidents.
 
@@ -259,6 +294,8 @@ The core loop is done and solid. Here's what's next:
 
 - ~~**Home screen widget** — see your streak without opening the app~~ ✅ *shipped in v4.0.0*
 - ~~**Multi-habit support** — track more than one thing at a time~~ ✅ *shipped in v4.0.0*
+- ~~**Custom themes** — your own accent color or a gallery photo as the background~~ ✅ *shipped in v4.2.0*
+- ~~**Exact activity timestamps** — see the clock time behind every logged day~~ ✅ *shipped in v4.2.0*
 - **Custom milestone days** — set your own targets beyond the defaults
 - **Biometric lock** — fingerprint protection for your history
 - **Richer charts** — win-rate trend line over the 6-month view
@@ -323,6 +360,6 @@ Issues, ideas, and PRs are open. If you fix a bug or build something from the ro
 
 `android` `kotlin` `jetpack-compose` `streak-tracker` `habit-tracker` `self-improvement`
 `discipline` `productivity` `material3` `mvvm` `offline` `privacy-first` `open-source` `no-ads`
-`multi-habit` `home-screen-widget` `glance`
+`multi-habit` `home-screen-widget` `glance` `custom-themes`
 
 </div>
