@@ -11,6 +11,8 @@ package com.tanay.warrior.data
 // [NEW]    v4.0.0: Multi-habit support — HABITS_JSON replaces HISTORY + TRIGGERS.
 //                  ACTIVE_HABIT_ID tracks the currently-selected habit.
 //                  Legacy HISTORY / TRIGGERS keys are read once for migration.
+// [NEW]    v4.2.0: THEME_SETTINGS key — persists the user's custom theme
+//                  (accent color or gallery photo background) across restarts.
 
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -44,6 +46,8 @@ class WarriorRepository(private val context: Context) {
         // v4.0.0 multi-habit
         val HABITS_JSON         = stringPreferencesKey("w_habits_v9")
         val ACTIVE_HABIT_ID     = stringPreferencesKey("w_active_habit_v9")
+        // v4.2.0 custom theme
+        val THEME_SETTINGS      = stringPreferencesKey("w_theme_v9")
     }
 
     val warriorStateFlow: Flow<WarriorState> = context.dataStore.data.map { prefs ->
@@ -77,7 +81,12 @@ class WarriorRepository(private val context: Context) {
         val resolvedActiveId = if (habits.any { it.id == activeHabitId }) activeHabitId
                                else habits.firstOrNull()?.id ?: ""
 
-        WarriorState(habits, resolvedActiveId, onboarded, userProfile, profileDone, botsJson)
+        // v4.2.0 — custom theme (color or gallery photo background)
+        val themeSettings: ThemeSettings = runCatching {
+            Json.decodeFromString<ThemeSettings>(prefs[Keys.THEME_SETTINGS] ?: "{}")
+        }.getOrDefault(ThemeSettings())
+
+        WarriorState(habits, resolvedActiveId, onboarded, userProfile, profileDone, botsJson, themeSettings)
     }
 
     suspend fun saveState(state: WarriorState) {
@@ -88,6 +97,7 @@ class WarriorRepository(private val context: Context) {
             prefs[Keys.USER_PROFILE]     = Json.encodeToString(state.userProfile)
             prefs[Keys.PROFILE_COMPLETE] = state.hasCompletedProfile
             prefs[Keys.BOTS_JSON]        = state.botsJson
+            prefs[Keys.THEME_SETTINGS]   = Json.encodeToString(state.themeSettings)
         }
     }
 
