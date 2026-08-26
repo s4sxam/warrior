@@ -273,7 +273,13 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         val today = todayKey()
         val active = _state.value.activeHabit ?: return
         if (active.history.containsKey(today)) return
-        val updated = active.copy(history = active.history + (today to DayData(status = "clean")))
+
+        // v4.2.0 — stamp the exact time this Victory was logged, mirroring
+        // logRelapse()'s lastFailTime below. Read by AnalysisScreen's
+        // "Recent Activity" list to show clock time, not just the date.
+        val nowTime = java.time.LocalDateTime.now()
+            .format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+        val updated = active.copy(history = active.history + (today to DayData(status = "clean", lastCleanTime = nowTime)))
         val new = _state.value.withUpdatedHabit(updated)
         _state.value = new
         _showConfetti.value = true
@@ -373,226 +379,73 @@ class WarriorViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch { repo.saveState(new) }
     }
 
-    fun clearConfetti() { _showConfetti.value = false }
+    // ── v4.2.0: Custom theme ──────────────────────────────────────────────────
 
-    fun exportJson(): String = repo.exportJson(_state.value)
-
-    fun importJson(json: String): Boolean {
-        val merged = repo.importJson(_state.value, json) ?: return false
-        _state.value = merged
-        viewModelScope.launch { repo.saveState(merged) }
-        return true
+    /** Switches back to the app's built-in red/black theme. */
+    fun resetTheme() {
+        val old = _state.value.themeSettings
+        deleteThemePhotoIfUnused(old, com.tanay.warrior.data.ThemeSettings())
+        val new = _state.value.copy(themeSettings = com.tanay.warrior.data.ThemeSettings())
+        _state.value = new
+        viewModelScope.launch { repo.saveState(new) }
     }
 
-    fun importPlain(entries: Map<com.tanay.warrior.data.DayData, String>): Boolean = false // unused overload
-
-    fun importPlainDays(days: Map<String, com.tanay.warrior.data.DayData>): Boolean {
-        if (days.isEmpty()) return false
-        val active = _state.value.activeHabit ?: return false
-        val updated = active.copy(history = active.history + days)
-        val merged = _state.value.withUpdatedHabit(updated)
-        _state.value = merged
-        viewModelScope.launch { repo.saveState(merged) }
-        return true
-    }
-
-    // ── v2.3.0: Fixed update flow ─────────────────────────────────────────────
-
-    /**
-     * [FIX BUG 1 + BUG 3] Checks GitHub and only shows dialog if:
-     *   1. A newer version exists
-     *   2. The user has NOT already dismissed this exact version
-     * This means once the user taps "Later" on v2.3.0, the dialog won't
-     * reappear on every launch — it will only appear again when v2.4.0 drops.
-     */
-    fun checkForUpdate(currentVersion: String) {
-        viewModelScope.launch {
-            val result = UpdateChecker.check(currentVersion)
-            if (!result.hasUpdate) return@launch
-
-            // Load the version the user previously dismissed (persisted across restarts)
-            val dismissedVersion = repo.getDismissedVersion()
-
-            // Only show the dialog if this version is newer than what was dismissed.
-            // e.g. user dismissed 2.3.0 → dismissedVersion = "2.3.0"
-            //      next launch still shows 2.3.0 on GitHub → skip (already dismissed)
-            //      later 2.4.0 ships → isNewer("2.4.0", "2.3.0") = true → show dialog
-            if (dismissedVersion.isBlank() || UpdateChecker.isNewer(result.latestVersion, dismissedVersion)) {
-                _updateState.value = UpdateState(
-                    hasUpdate     = true,
-                    latestVersion = result.latestVersion,
-                    downloadUrl   = result.downloadUrl
-                )
-            }
-        }
-    }
-
-    /**
-     * Called when the user taps "Download Update" in the dialog.
-     * Enqueues the APK via DownloadManager and starts polling.
-     */
-    fun downloadUpdate() {
-        val s = _updateState.value
-        if (s.downloadUrl.isBlank()) return
-
-        val ctx = getApplication<Application>()
-        val downloadId = UpdateChecker.downloadApk(ctx, s.downloadUrl, s.latestVersion)
-
-        _updateState.value = s.copy(
-            phase      = DownloadPhase.DOWNLOADING,
-            downloadId = downloadId
+    /** Sets a custom solid accent color. [hex] is 6 hex chars, no leading '#', e.g. "1DB954". */
+    fun setThemeColor(hex: String) {
+        val old = _state.value.themeSettings
+        val updated = com.tanay.warrior.data.ThemeSettings(
+            mode           = com.tanay.warrior.data.ThemeMode.CUSTOM_COLOR,
+            accentColorHex = hex
         )
-
-        // [FIX BUG 6] Persist the downloadId so we can cancel it if the app is killed
-        viewModelScope.launch(Dispatchers.IO) {
-            repo.savePendingDownloadId(downloadId)
-        }
-
-        startPolling(downloadId)
+        deleteThemePhotoIfUnused(old, updated)
+        val new = _state.value.copy(themeSettings = updated)
+        _state.value = new
+        viewModelScope.launch { repo.saveState(new) }
     }
 
     /**
-     * Polls DownloadManager every 500 ms until the download finishes or fails.
-     */
-    private fun startPolling(downloadId: Long) {
-        pollJob?.cancel()
-        pollJob = viewModelScope.launch(Dispatchers.IO) {
-            while (true) {
-                val progress = UpdateChecker.queryProgress(getApplication(), downloadId)
-
-                withContext(Dispatchers.Main) {
-                    when (progress.status) {
-                        DownloadManager.STATUS_SUCCESSFUL -> {
-                            _updateState.value = _updateState.value.copy(
-                                phase         = DownloadPhase.READY,
-                                progressBytes = progress.bytesDownloaded,
-                                totalBytes    = progress.bytesTotal,
-                                localUri      = progress.localUri
-                            )
-                        }
-                        DownloadManager.STATUS_FAILED -> {
-                            _updateState.value = _updateState.value.copy(
-                                phase = DownloadPhase.FAILED
-                            )
-                        }
-                        else -> {
-                            // STATUS_RUNNING or STATUS_PENDING — update progress
-                            _updateState.value = _updateState.value.copy(
-                                progressBytes = progress.bytesDownloaded,
-                                totalBytes    = progress.bytesTotal
-                            )
-                        }
-                    }
-                }
-
-                // Stop polling once terminal state is reached
-                if (progress.status == DownloadManager.STATUS_SUCCESSFUL ||
-                    progress.status == DownloadManager.STATUS_FAILED) {
-                    // [FIX BUG 6] Clear persisted ID — download is no longer in-flight
-                    repo.clearPendingDownloadId()
-                    break
-                }
-
-                delay(500)
-            }
-        }
-    }
-
-    /**
-     * [FIX BUG 8] Uses the localUri that was already retrieved from DownloadManager
-     * (stored in UpdateState.localUri) instead of reconstructing the file path manually.
-     * Reconstructing the path was fragile and could crash with FileNotFoundException
-     * if the filename didn't match exactly.
+     * Copies a gallery photo (picked via PickVisualMedia) into app-private
+     * storage and sets it as the app background.
      *
-     * [FIX BUG 4] Also saves the installed version as the dismissed version so the
-     * dialog won't reappear after the user installs the update.
+     * Why copy instead of storing the picked content:// URI directly: the
+     * read permission Android grants for a PhotoPicker URI is not guaranteed
+     * to survive a device reboot, and the user could delete/move the photo
+     * from their gallery later. Copying the bytes into our own files dir
+     * makes the theme durable the same way the rest of app state is.
      */
-    fun installApk(context: Context) {
-        val localUri = _updateState.value.localUri ?: return
-        val version  = _updateState.value.latestVersion
-
-        // Use the localUri from DownloadManager directly — already verified path
-        val file = File(Uri.parse(localUri).path ?: return)
-
-        val contentUri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.provider",
-            file
-        )
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(contentUri, "application/vnd.android.package-archive")
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
-        }
-        context.startActivity(intent)
-
-        // [FIX BUG 4] Record that the user acted on this version. Even if they
-        // cancel the system installer, we won't pester them again this session.
+    fun setThemePhoto(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
-            repo.saveDismissedVersion(version)
-        }
-        _updateState.value = _updateState.value.copy(dismissed = true)
-    }
-
-    /**
-     * [FIX BUG 1] Persists the dismissed version to DataStore so the dialog
-     * does NOT reappear on the next launch for the same version.
-     * [FIX BUG 3] Since we save the version string (not just a boolean),
-     * the dialog WILL reappear when a genuinely newer version ships.
-     */
-    fun dismissUpdate() {
-        pollJob?.cancel()
-        val version = _updateState.value.latestVersion
-        _updateState.value = _updateState.value.copy(dismissed = true)
-        viewModelScope.launch(Dispatchers.IO) {
-            repo.saveDismissedVersion(version)
-        }
-    }
-
-    /**
-     * [FIX BUG 2] retryDownload() previously only reset the phase to IDLE without
-     * actually starting a new download. Now it calls downloadUpdate() which
-     * properly re-enqueues a fresh DownloadManager request.
-     */
-    fun retryDownload() {
-        // Reset phase and clear the stale downloadId before re-enqueueing
-        _updateState.value = _updateState.value.copy(
-            phase      = DownloadPhase.IDLE,
-            downloadId = -1L,
-            progressBytes = 0L,
-            totalBytes    = 0L,
-            localUri      = null
-        )
-        // Now actually start a new download
-        downloadUpdate()
-    }
-
-    // ── Private helpers ───────────────────────────────────────────────────────
-
-    private fun extractDomain(url: String): String {
-        val cleaned    = url.trim()
-        val withScheme = if (!cleaned.startsWith("http")) "https://$cleaned" else cleaned
-        val host = android.net.Uri.parse(withScheme).host ?: throw IllegalArgumentException("bad url")
-        return host.removePrefix("www.")
-    }
-
-    private fun WarriorState.withUpdatedHabit(habit: com.tanay.warrior.data.Habit): WarriorState =
-        copy(habits = habits.map { if (it.id == habit.id) habit else it })
-
-    private fun vibrate(pattern: LongArray) {
-        try {
             val ctx = getApplication<Application>()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                ctx.getSystemService(VibratorManager::class.java)
-                    ?.defaultVibrator?.vibrate(VibrationEffect.createWaveform(pattern, -1))
-            } else {
-                @Suppress("DEPRECATION")
-                val v = ctx.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? Vibrator
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                    v?.vibrate(VibrationEffect.createWaveform(pattern, -1))
-                else {
-                    @Suppress("DEPRECATION") v?.vibrate(pattern, -1)
+            val destFile = File(ctx.filesDir, "theme_bg_${System.currentTimeMillis()}.jpg")
+            val copied = runCatching {
+                ctx.contentResolver.openInputStream(uri)?.use { input ->
+                    destFile.outputStream().use { output -> input.copyTo(output) }
                 }
+                destFile.exists() && destFile.length() > 0
+            }.getOrDefault(false)
+
+            if (!copied) return@launch
+
+            val old = _state.value.themeSettings
+            val updated = com.tanay.warrior.data.ThemeSettings(
+                mode      = com.tanay.warrior.data.ThemeMode.PHOTO,
+                photoPath = destFile.absolutePath
+            )
+            deleteThemePhotoIfUnused(old, updated)
+
+            withContext(Dispatchers.Main) {
+                val new = _state.value.copy(themeSettings = updated)
+                _state.value = new
+                repo.saveState(new)
             }
-        } catch (_: Exception) {}
+        }
     }
-}
+
+    /**
+     * Deletes the previous theme photo file from disk once it's no longer
+     * referenced by the new settings, so old photos don't pile up in
+     * app-private storage every time the user picks a new background.
+     */
+    private fun deleteThemePhotoIfUnused(
+        old: com.tanay.warrior.data.ThemeSettings,
+        new: com.tanay
