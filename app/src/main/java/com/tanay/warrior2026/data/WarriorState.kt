@@ -15,6 +15,16 @@ package com.tanay.warrior.data
 //                  evening notification to fire at that exact time of day.
 // [NEW]    v4.1.0: Habit.monthCleanPercent — % of the current month logged clean,
 //                  used by the widget's Yes/No quick-log stat row.
+// [NEW]    v4.2.0: DayData.lastCleanTime — mirrors lastFailTime but for Victory
+//                  logs. Stamped in WarriorViewModel.logVictory(). Lets the
+//                  Analysis screen show the exact clock time an activity was
+//                  logged, not just which calendar day.
+// [NEW]    v4.2.0: ThemeSettings — user-selectable app theme. Either a custom
+//                  accent color, or a photo (picked from the device gallery,
+//                  copied into app-private storage) used as the app background.
+//                  Lives on WarriorState so it persists via the same DataStore
+//                  flow as everything else, and is available at ui/theme/Theme.kt
+//                  via CompositionLocal so every screen picks it up automatically.
 
 import kotlinx.serialization.Serializable
 import java.time.LocalDate
@@ -29,8 +39,23 @@ data class DayData(
     val status: String,        // "clean" | "failed"
     val site: String? = null,
     // v4.0.2 — relapse counter
-    val relapseCount: Int = 0,         // how many times the user failed this day
-    val lastFailTime: String? = null   // ISO-8601 datetime of the last fail e.g. "2026-04-30T21:45:00"
+    val relapseCount: Int = 0,          // how many times the user failed this day
+    val lastFailTime: String? = null,   // ISO-8601 datetime of the last fail e.g. "2026-04-30T21:45:00"
+    // v4.2.0 — mirrors lastFailTime for the clean/Victory path
+    val lastCleanTime: String? = null   // ISO-8601 datetime the day was logged clean
+) {
+    /** The most recent timestamp for this day, whichever action was logged last. */
+    val lastActivityTime: String? get() = lastFailTime ?: lastCleanTime
+}
+
+// ── v4.2.0: Custom theme ──────────────────────────────────────────────────────
+enum class ThemeMode { DEFAULT, CUSTOM_COLOR, PHOTO }
+
+@Serializable
+data class ThemeSettings(
+    val mode: ThemeMode        = ThemeMode.DEFAULT,
+    val accentColorHex: String = "",   // e.g. "FF3131" — only read when mode == CUSTOM_COLOR
+    val photoPath: String      = ""    // absolute path under app-private storage — only read when mode == PHOTO
 )
 
 // ── v2.0.0: User profile ──────────────────────────────────────────────────────
@@ -117,7 +142,9 @@ data class WarriorState(
     // v2.0.0 additions
     val userProfile: UserProfile      = UserProfile(),
     val hasCompletedProfile: Boolean  = false,
-    val botsJson: String              = ""  // serialized List<BotProfile>
+    val botsJson: String              = "",  // serialized List<BotProfile>
+    // v4.2.0
+    val themeSettings: ThemeSettings  = ThemeSettings()
 ) {
     // ── Convenience accessors — delegate to the active habit ──────────────────
     val activeHabit: Habit? get() = habits.find { it.id == activeHabitId } ?: habits.firstOrNull()
