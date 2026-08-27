@@ -1,0 +1,624 @@
+package com.tanay.warrior.ui.screens
+
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.tanay.warrior.data.WarriorState
+import com.tanay.warrior.ui.theme.*
+import com.tanay.warrior.ui.components.*
+import java.time.LocalDate
+import java.time.Month
+import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
+import java.util.Locale
+
+// ─────────────────────────────────────────────────────────────
+// DATA MODELS
+// ─────────────────────────────────────────────────────────────
+private data class MonthStats(
+    val month: Month,
+    val year: Int,
+    val victories: Int,
+    val defeats: Int,
+    val logged: Int,
+    val consistency: Int,   // 0–100
+    // v4.0.2 — total relapse events this month (one day can have >1 if user fails multiple times)
+    val totalRelapses: Int = 0
+)
+
+private fun buildMonthStats(state: WarriorState): List<MonthStats> {
+    val fmt = DateTimeFormatter.ISO_LOCAL_DATE
+    val now = LocalDate.now()
+
+    return (0..5).reversed().mapNotNull { monthOffset ->
+        val target = now.minusMonths(monthOffset.toLong())
+        val daysInMonth = target.month.length(target.isLeapYear)
+        var v = 0; var d = 0
+        (1..daysInMonth).forEach { day ->
+            val key = target.withDayOfMonth(day).format(fmt)
+            when (state.history[key]?.status) {
+                "clean"  -> v++
+                "failed" -> d++
+            }
+        }
+        // v4.0.2 — accumulate relapseCount from each failed day
+        var totalRelapses = 0
+        (1..daysInMonth).forEach { day ->
+            val key = target.withDayOfMonth(day).format(fmt)
+            val dayData = state.history[key]
+            if (dayData?.status == "failed") {
+                totalRelapses += dayData.relapseCount.coerceAtLeast(1)
+            }
+        }
+
+        if (v + d == 0) null
+        else MonthStats(
+            month         = target.month,
+            year          = target.year,
+            victories     = v,
+            defeats       = d,
+            logged        = v + d,
+            consistency   = ((v.toFloat() / (v + d)) * 100).toInt(),
+            totalRelapses = totalRelapses
+        )
+    }
+}
+
+private fun computeRank(state: WarriorState): Pair<String, Color> {
+    // Based on consistency over last 30 days
+    val fmt = DateTimeFormatter.ISO_LOCAL_DATE
+    val now = LocalDate.now()
+    var v = 0; var d = 0
+    (0 until 30).forEach { offset ->
+        when (state.history[now.minusDays(offset.toLong()).format(fmt)]?.status) {
+            "clean"  -> v++
+            "failed" -> d++
+        }
+    }
+    val pct = if (v + d > 0) (v.toFloat() / (v + d) * 100).toInt() else 0
+    return when {
+        pct >= 88  -> "⚡ PARAGON"   to Color(0xFFFFD700)  // top ~7%  (μ+1.5σ)
+        pct >= 73  -> "🛡 ADHERENT" to Color(0xFF1DB954)  // top ~23% (μ+0.5σ)
+        pct >= 58  -> "⚔ SOLDIER"  to Color(0xFF4FC3F7)  // top ~50% (μ−0.5σ)
+        pct >= 43  -> "😐 RECRUIT"  to Color(0xFFFF9800)  // top ~73% (μ−1.5σ)
+        else       -> "💀 FALLEN"    to WarriorRed
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// SCREEN
+// ─────────────────────────────────────────────────────────────
+@Composable
+fun AnalysisScreen(state: WarriorState, onOpenAchievements: () -> Unit = {}) {
+    val monthsData = remember(state.history) { buildMonthStats(state) }
+    val (rank, rankColor) = remember(state.history) { computeRank(state) }
+
+    val allVictories = remember(monthsData) { monthsData.sumOf { it.victories } }
+    val allDefeats   = remember(monthsData) { monthsData.sumOf { it.defeats } }
+    val allConsistency = if (allVictories + allDefeats > 0)
+        (allVictories.toFloat() / (allVictories + allDefeats) * 100).toInt() else 0
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(LocalScreenBg.current) // v4.2.0 — was BgBlack; transparent in photo-theme mode so the photo shows through
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 24.dp)
+    ) {
+
+        // ── Hero rank card ──
+        RankCard(rank = rank, rankColor = rankColor, streak = state.streak, best = state.bestStreak)
+
+        Spacer(Modifier.height(16.dp))
+
+        // ── Overall stats row ──
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            MiniStatCard(Modifier.weight(1f), "$allVictories", "VICTORIES", VictoryGreen)
+            MiniStatCard(Modifier.weight(1f), "$allDefeats",   "DEFEATS",   WarriorRed)
+            MiniStatCard(Modifier.weight(1f), "$allConsistency%", "CLEAN",  Color(0xFFFFD700))
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        // ── Monthly bar chart ──
+        if (monthsData.isNotEmpty()) {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Text("MONTHLY VICTORIES", fontSize = 10.sp, color = TextSecondary,
+                    fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+                Spacer(Modifier.height(16.dp))
+                MonthlyBarChart(months = monthsData)
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // ── Consistency ring ──
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(20.dp)
+            ) {
+                ConsistencyRing(
+                    percentage = allConsistency,
+                    modifier = Modifier.size(110.dp)
+                )
+                Column {
+                    Text("OVERALL CONSISTENCY", fontSize = 10.sp,
+                        color = TextSecondary, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+                    Spacer(Modifier.height(6.dp))
+                    Text("$allConsistency%", fontSize = 40.sp,
+                        fontWeight = FontWeight.Black,
+                        color = consistencyColor(allConsistency))
+                    Text(
+                        consistencyLabel(allConsistency),
+                        fontSize = 12.sp, color = TextTertiary, fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // ── Monthly breakdown list ──
+        if (monthsData.isNotEmpty()) {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Text("MONTHLY BREAKDOWN", fontSize = 10.sp, color = TextSecondary,
+                    fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+                Spacer(Modifier.height(14.dp))
+                monthsData.reversed().forEach { m ->
+                    MonthRow(m)
+                    Spacer(Modifier.height(10.dp))
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // ── Weakness ranking ──
+        val sorted = remember(state.triggers) {
+            state.triggers.entries.sortedByDescending { it.value }
+        }
+        if (sorted.isNotEmpty()) {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Text("TRIGGER RANKING", fontSize = 10.sp, color = TextSecondary,
+                    fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+                Spacer(Modifier.height(14.dp))
+                val maxCount = sorted.first().value.toFloat()
+                sorted.forEach { (site, count) ->
+                    WeaknessBar(site = site, count = count, maxCount = maxCount)
+                    Spacer(Modifier.height(12.dp))
+                }
+            }
+        } else {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Text("TRIGGER RANKING", fontSize = 10.sp, color = TextSecondary,
+                    fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+                Spacer(Modifier.height(12.dp))
+                Text("NO TRIGGERS LOGGED — STAY CLEAN", fontSize = 12.sp,
+                    color = VictoryGreen, fontWeight = FontWeight.ExtraBold)
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // ── v4.2.0: Recent activity — exact logged time per day ──
+        RecentActivityCard(state = state)
+
+        Spacer(Modifier.height(16.dp))
+
+        // ── v4.3.0: Achievements entry point ──
+        AchievementsEntryCard(state = state, onClick = onOpenAchievements)
+    }
+}
+
+/** Compact summary card that opens the full Achievements grid on tap. Shows a live unlocked-count so the number is never stale between visits — it's derived the same way the full screen derives it (see data/Achievements.kt), just computed here too since this card renders before that screen ever opens. */
+@Composable
+private fun AchievementsEntryCard(state: WarriorState, onClick: () -> Unit) {
+    val unlockedCount = remember(state) {
+        com.tanay.warrior.data.ALL_ACHIEVEMENTS.count { it.progressOf(state).isComplete }
+    }
+    val total = com.tanay.warrior.data.ALL_ACHIEVEMENTS.size
+
+    GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("🏆", fontSize = 28.sp)
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text("ACHIEVEMENTS", fontSize = 13.sp, fontWeight = FontWeight.Black,
+                    color = WarriorRed, letterSpacing = 1.sp)
+                Spacer(Modifier.height(2.dp))
+                Text("$unlockedCount of $total unlocked", fontSize = 12.sp,
+                    color = TextSecondary, fontWeight = FontWeight.Bold)
+            }
+            Text("→", fontSize = 18.sp, color = TextTertiary, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// COMPONENTS
+// ─────────────────────────────────────────────────────────────
+
+@Composable
+private fun RankCard(rank: String, rankColor: Color, streak: Int, best: Int) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(Color(0xFF0D0D0D))
+            .border(1.dp, rankColor.copy(alpha = 0.3f), RoundedCornerShape(24.dp))
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("WARRIOR RANK", fontSize = 9.sp, color = TextTertiary,
+                fontWeight = FontWeight.ExtraBold, letterSpacing = 3.sp)
+            Spacer(Modifier.height(8.dp))
+            Text(rank, fontSize = 28.sp, fontWeight = FontWeight.Black, color = rankColor)
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("$streak", fontSize = 28.sp, fontWeight = FontWeight.Black, color = WarriorRed)
+                    Text("STREAK", fontSize = 8.sp, color = TextTertiary,
+                        fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("$best", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFFFFD700))
+                    Text("BEST", fontSize = 8.sp, color = TextTertiary,
+                        fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniStatCard(modifier: Modifier, value: String, label: String, color: Color) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(CardBlack)
+            .border(1.dp, BorderColor, RoundedCornerShape(16.dp))
+            .padding(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(value, fontSize = 22.sp, fontWeight = FontWeight.Black, color = color)
+        Spacer(Modifier.height(2.dp))
+        Text(label, fontSize = 8.sp, color = TextTertiary,
+            fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+    }
+}
+
+// v4.0.2 — MonthlyBarChart now uses ChartContainer + ChartLegendContent
+//           from Chart.kt (Kotlin equivalent of the Recharts-based TS chart system)
+
+// ── v4.2.0: Recent Activity ─────────────────────────────────────────────────
+// Shows the last several logged days with the exact clock time each was
+// recorded (DayData.lastActivityTime — set in WarriorViewModel.logVictory()
+// / logRelapse() at the moment the user taps Clean/Fail). Entries logged
+// before this update won't have a timestamp; those show "TIME NOT RECORDED"
+// rather than a fabricated one.
+
+private val RECENT_ACTIVITY_DISPLAY_FMT = java.time.format.DateTimeFormatter.ofPattern("h:mm a")
+private const val RECENT_ACTIVITY_ROW_LIMIT = 10
+
+@Composable
+private fun RecentActivityCard(state: WarriorState) {
+    val recentDays = remember(state.history) {
+        state.history.entries
+            .sortedByDescending { it.key } // ISO date strings sort correctly as plain strings
+            .take(RECENT_ACTIVITY_ROW_LIMIT)
+    }
+
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Text("RECENT ACTIVITY", fontSize = 10.sp, color = TextSecondary,
+            fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+        Spacer(Modifier.height(14.dp))
+
+        if (recentDays.isEmpty()) {
+            Text("NO ACTIVITY LOGGED YET", fontSize = 12.sp,
+                color = TextTertiary, fontWeight = FontWeight.ExtraBold)
+        } else {
+            recentDays.forEachIndexed { index, (dateKey, day) ->
+                ActivityRow(dateKey = dateKey, day = day)
+                if (index != recentDays.lastIndex) Spacer(Modifier.height(10.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActivityRow(dateKey: String, day: com.tanay.warrior.data.DayData) {
+    val isClean = day.status == "clean"
+    val dotColor = if (isClean) VictoryGreen else WarriorRed
+
+    // Parses a stored "yyyy-MM-ddTHH:mm:ss..." timestamp into a friendly
+    // "7:42 PM" for display. Falls back cleanly for entries logged before
+    // this update existed, rather than guessing a time that was never recorded.
+    val timeLabel = remember(day.lastActivityTime) {
+        day.lastActivityTime?.let { raw ->
+            runCatching {
+                java.time.LocalDateTime.parse(raw).format(RECENT_ACTIVITY_DISPLAY_FMT)
+            }.getOrNull()
+        } ?: "TIME NOT RECORDED"
+    }
+
+    val dateLabel = remember(dateKey) {
+        runCatching {
+            LocalDate.parse(dateKey).format(java.time.format.DateTimeFormatter.ofPattern("MMM d"))
+        }.getOrDefault(dateKey)
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(dotColor)
+        )
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                if (isClean) "Marked Clean" else if (day.relapseCount > 1) "Failed (${day.relapseCount}×)" else "Failed",
+                fontSize = 12.sp, fontWeight = FontWeight.ExtraBold,
+                color = TextPrimary
+            )
+            Text(dateLabel, fontSize = 10.sp, color = TextTertiary, fontWeight = FontWeight.Bold)
+        }
+        Text(
+            timeLabel,
+            fontSize = 11.sp, fontWeight = FontWeight.Bold,
+            color = if (timeLabel == "TIME NOT RECORDED") TextDim else TextSecondary
+        )
+    }
+}
+
+private val monthlyChartConfig: ChartConfig = mapOf(
+    "victories" to ChartSeriesConfig(label = "Clean",  color = ChartClean),
+    "defeats"   to ChartSeriesConfig(label = "Failed", color = ChartFailed)
+)
+
+@Composable
+private fun MonthlyBarChart(months: List<MonthStats>) {
+    val maxV = remember(months) { months.maxOf { it.victories }.coerceAtLeast(1).toFloat() }
+    val animProgress by animateFloatAsState(
+        targetValue   = 1f,
+        animationSpec = tween(1000, easing = EaseOutCubic),
+        label         = "bar_chart"
+    )
+    LaunchedEffect(Unit) { /* trigger recomposition to kick off animation */ }
+
+    // ChartContainer provides config via CompositionLocal — mirrors <ChartContext.Provider>
+    ChartContainer(
+        config   = monthlyChartConfig,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        val chartHeight = 120.dp
+        Box(modifier = Modifier.fillMaxSize()) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(chartHeight)
+                    .align(Alignment.TopCenter)
+            ) {
+                val barWidth = (size.width / months.size) * 0.55f
+                val gap      = (size.width / months.size) * 0.45f / 2f
+                val slotW    = size.width / months.size
+
+                months.forEachIndexed { i, m ->
+                    val vFrac = (m.victories.toFloat() / maxV) * animProgress
+                    val dFrac = (m.defeats.toFloat() / maxV) * animProgress
+                    val x     = i * slotW + gap
+                    val barW2 = barWidth / 2f
+
+                    // Victory bar (left half)
+                    drawRoundRect(
+                        color        = ChartClean,
+                        topLeft      = Offset(x, size.height * (1f - vFrac)),
+                        size         = Size(barW2 - 2f, size.height * vFrac),
+                        cornerRadius = CornerRadius(4f, 4f)
+                    )
+                    // Defeat bar (right half)
+                    drawRoundRect(
+                        color        = ChartFailed,
+                        topLeft      = Offset(x + barW2 + 2f, size.height * (1f - dFrac)),
+                        size         = Size(barW2 - 2f, size.height * dFrac),
+                        cornerRadius = CornerRadius(4f, 4f)
+                    )
+                }
+            }
+
+            // X-axis month labels
+            Row(
+                modifier              = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter),
+                horizontalArrangement = Arrangement.SpaceAround
+            ) {
+                months.forEach { m ->
+                    Text(
+                        text       = m.month.getDisplayName(TextStyle.SHORT, Locale.US).uppercase(),
+                        fontSize   = 8.sp,
+                        color      = TextTertiary,
+                        fontWeight = FontWeight.ExtraBold,
+                        textAlign  = TextAlign.Center,
+                        modifier   = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+    }
+
+    // ChartLegendContent — mirrors <ChartLegendContent> / <ChartLegend />
+    Spacer(Modifier.height(8.dp))
+    ChartLegendContent(
+        config        = monthlyChartConfig,
+        verticalAlign = LegendAlign.BOTTOM
+    )
+}
+
+@Composable
+private fun ConsistencyRing(percentage: Int, modifier: Modifier = Modifier) {
+    val animPct by animateFloatAsState(
+        targetValue = percentage / 100f,
+        animationSpec = tween(1200, easing = EaseOutCubic),
+        label = "ring"
+    )
+    val color = consistencyColor(percentage)
+
+    Canvas(modifier = modifier) {
+        val strokeW = 12.dp.toPx()
+        val inset   = strokeW / 2f
+        drawArc(
+            color      = CardBlack,
+            startAngle = -90f,
+            sweepAngle = 360f,
+            useCenter  = false,
+            topLeft    = Offset(inset, inset),
+            size       = Size(size.width - strokeW, size.height - strokeW),
+            style      = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = strokeW,
+                cap   = StrokeCap.Round
+            )
+        )
+        drawArc(
+            color      = color,
+            startAngle = -90f,
+            sweepAngle = 360f * animPct,
+            useCenter  = false,
+            topLeft    = Offset(inset, inset),
+            size       = Size(size.width - strokeW, size.height - strokeW),
+            style      = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = strokeW,
+                cap   = StrokeCap.Round
+            )
+        )
+    }
+}
+
+@Composable
+private fun MonthRow(m: MonthStats) {
+    val total = m.victories + m.defeats
+    val pct   = if (total > 0) (m.victories.toFloat() / total * 100).toInt() else 0
+    val animPct by animateFloatAsState(
+        targetValue = m.victories.toFloat() / total.coerceAtLeast(1),
+        animationSpec = tween(900, easing = EaseOutCubic),
+        label = "month_bar_${m.month}"
+    )
+
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                m.month.getDisplayName(TextStyle.SHORT, Locale.US).uppercase() + " ${m.year}",
+                fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextSecondary
+            )
+            // v4.0.2 — show relapse count when a day had multiple relapses
+            val relapseLabel = if (m.totalRelapses > m.defeats) " · ${m.totalRelapses}×" else ""
+            Text(
+                "${m.victories}W · ${m.defeats}L · $pct%$relapseLabel",
+                fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextTertiary
+            )
+        }
+        Spacer(Modifier.height(5.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(CardBlack)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(animPct)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(consistencyColor(pct))
+            )
+        }
+    }
+}
+
+@Composable
+private fun WeaknessBar(site: String, count: Int, maxCount: Float) {
+    val animPct by animateFloatAsState(
+        targetValue = count / maxCount,
+        animationSpec = tween(1000, easing = EaseOutCubic),
+        label = "weakness_$site"
+    )
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(site, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = TextSecondary)
+            Text("$count×", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = WarriorRed)
+        }
+        Spacer(Modifier.height(4.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(7.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(CardBlack)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(animPct)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(WarriorRed)
+            )
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────
+private fun consistencyColor(pct: Int) = when {
+    pct >= 85 -> VictoryGreen
+    pct >= 60 -> Color(0xFFFFD700)
+    pct >= 40 -> Color(0xFFFF9800)
+    else      -> WarriorRed
+}
+
+private fun consistencyLabel(pct: Int) = when {
+    pct >= 85 -> "ELITE TIER"
+    pct >= 70 -> "SOLID"
+    pct >= 50 -> "AVERAGE"
+    pct >= 30 -> "STRUGGLING"
+    else      -> "CRITICAL"
+}
