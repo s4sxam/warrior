@@ -1,0 +1,614 @@
+package com.tanay.warrior
+
+// [UPDATE] v2.0.0: Added Commander Profile flow, Leaderboard tab, bot state wiring
+// [UPDATE] v2.1.0: Added in-app update checker dialog
+// [UPDATE] v2.2.0: Update dialog now uses DownloadManager — no browser open
+// [FIX]    v2.3.0: Removed onTestUpdate parameter from WarriorApp and AboutScreen.
+//                  Auto-check on launch is the only update trigger — no manual button.
+// [NEW]    v4.2.0: Warrior2026Theme now takes state.themeSettings so a custom
+//                  accent color applies app-wide. Photo-mode background is
+//                  drawn as a full-bleed Image behind the Scaffold in
+//                  WarriorApp(), with a dark scrim so text stays legible over
+//                  any photo the user picks.
+
+import android.content.Intent
+import android.Manifest
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.tanay.warrior.data.ViewState
+import com.tanay.warrior.ui.screens.*
+import com.tanay.warrior.ui.theme.*
+import com.tanay.warrior.ui.components.*
+import kotlin.math.abs
+
+class MainActivity : ComponentActivity() {
+
+    private val viewModel: WarriorViewModel by viewModels()
+
+    private val notifLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) {}
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
+        super.onCreate(savedInstanceState)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        // v2.2.0: Check for update once on launch
+        viewModel.checkForUpdate(BuildConfig.VERSION_NAME)
+
+        setContent {
+            val themeState by viewModel.state.collectAsStateWithLifecycle()
+            Warrior2026Theme(themeSettings = themeState.themeSettings) {
+                val state            by viewModel.state.collectAsStateWithLifecycle()
+                val showConfetti     by viewModel.showConfetti.collectAsStateWithLifecycle()
+                val isGeneratingBots by viewModel.isGeneratingBots.collectAsStateWithLifecycle()
+                val updateState      by viewModel.updateState.collectAsStateWithLifecycle()
+                val regionalBoard    by viewModel.regionalBoard.collectAsStateWithLifecycle()
+                val globalBoard      by viewModel.globalBoard.collectAsStateWithLifecycle()
+                // v4.3.0 — achievements
+                val seenAchievementIds by viewModel.seenAchievementIds.collectAsStateWithLifecycle()
+
+                when {
+                    // Step 1: Original onboarding pages
+                    !state.hasCompletedOnboarding -> {
+                        OnboardingScreen(onFinish = { viewModel.completeOnboarding() })
+                    }
+                    // Step 2: v2.0.0 Commander Profile setup
+                    !state.hasCompletedProfile -> {
+                        CommanderProfileScreen(
+                            isGeneratingBots = isGeneratingBots,
+                            onComplete = { name, dob, region ->
+                                viewModel.completeProfile(name, dob, region)
+                            }
+                        )
+                    }
+                    // Step 3: Main app
+                    else -> {
+                        val context = LocalContext.current
+
+                        // v2.2.0: Update dialog — phases: IDLE → DOWNLOADING → READY / FAILED
+                        if (updateState.hasUpdate && !updateState.dismissed) {
+                            Dialog(onDismissRequest = {
+                                // Only allow dismiss when not actively downloading
+                                if (updateState.phase != WarriorViewModel.DownloadPhase.DOWNLOADING) {
+                                    viewModel.dismissUpdate()
+                                }
+                            }) {
+                                Column(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(Color(0xFF1A0000))
+                                        .padding(24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text          = "⚔️ NEW VERSION AVAILABLE",
+                                        fontSize      = 11.sp,
+                                        fontWeight    = FontWeight.ExtraBold,
+                                        color         = WarriorRed,
+                                        letterSpacing = 2.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(
+                                        text       = "v${updateState.latestVersion} is ready",
+                                        fontSize   = 20.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color      = Color.White
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text       = "Your streak and all data will NOT be lost.\nJust install over the existing app.",
+                                        fontSize   = 13.sp,
+                                        color      = TextTertiary,
+                                        textAlign  = TextAlign.Center,
+                                        lineHeight = 18.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(22.dp))
+
+                                    when (updateState.phase) {
+
+                                        // ── Not yet started ──────────────────
+                                        WarriorViewModel.DownloadPhase.IDLE -> {
+                                            Button(
+                                                onClick = { viewModel.downloadUpdate() },
+                                                colors  = ButtonDefaults.buttonColors(
+                                                    containerColor = WarriorRed
+                                                ),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text(
+                                                    text          = "DOWNLOAD UPDATE",
+                                                    fontWeight    = FontWeight.ExtraBold,
+                                                    letterSpacing = 1.sp
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            TextButton(onClick = { viewModel.dismissUpdate() }) {
+                                                Text("Later", color = TextTertiary)
+                                            }
+                                        }
+
+                                        // ── Downloading — show progress bar ──
+                                        WarriorViewModel.DownloadPhase.DOWNLOADING -> {
+                                            val fraction = updateState.progressFraction
+                                            if (fraction < 0f) {
+                                                LinearProgressIndicator(
+                                                    modifier   = Modifier.fillMaxWidth(),
+                                                    color      = WarriorRed,
+                                                    trackColor = Color(0xFF3A0000)
+                                                )
+                                            } else {
+                                                LinearProgressIndicator(
+                                                    progress   = { fraction },
+                                                    modifier   = Modifier.fillMaxWidth(),
+                                                    color      = WarriorRed,
+                                                    trackColor = Color(0xFF3A0000)
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            val mbDone  = updateState.progressBytes / 1_048_576f
+                                            val mbTotal = updateState.totalBytes / 1_048_576f
+                                            val label = if (updateState.totalBytes > 0)
+                                                "%.1f / %.1f MB".format(mbDone, mbTotal)
+                                            else
+                                                "Downloading..."
+                                            Text(
+                                                text     = label,
+                                                fontSize = 12.sp,
+                                                color    = TextTertiary
+                                            )
+                                        }
+
+                                        // ── Done — prompt to install ─────────
+                                        WarriorViewModel.DownloadPhase.READY -> {
+                                            Button(
+                                                onClick = { viewModel.installApk(context) },
+                                                colors  = ButtonDefaults.buttonColors(
+                                                    containerColor = WarriorRed
+                                                ),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text(
+                                                    text          = "INSTALL NOW",
+                                                    fontWeight    = FontWeight.ExtraBold,
+                                                    letterSpacing = 1.sp
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            TextButton(onClick = { viewModel.dismissUpdate() }) {
+                                                Text("Later", color = TextTertiary)
+                                            }
+                                        }
+
+                                        // ── Download failed ──────────────────
+                                        WarriorViewModel.DownloadPhase.FAILED -> {
+                                            Text(
+                                                text      = "Download failed. Check your connection.",
+                                                fontSize  = 12.sp,
+                                                color     = WarriorRed,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            Button(
+                                                onClick = { viewModel.retryDownload() },
+                                                colors  = ButtonDefaults.buttonColors(
+                                                    containerColor = WarriorRed
+                                                ),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text(
+                                                    text          = "RETRY",
+                                                    fontWeight    = FontWeight.ExtraBold,
+                                                    letterSpacing = 1.sp
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            TextButton(onClick = { viewModel.dismissUpdate() }) {
+                                                Text("Later", color = TextTertiary)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        WarriorApp(
+                            state           = state,
+                            vm              = viewModel,
+                            showConfetti    = showConfetti,
+                            onLogVictory    = { viewModel.logVictory() },
+                            onLogRelapse    = { url -> viewModel.logRelapse(url) },
+                            onClearConfetti = { viewModel.clearConfetti() },
+                            onExport        = { viewModel.exportJson() },
+                            onImport        = { json -> viewModel.importJson(json) },
+                            onImportPlain   = { days -> viewModel.importPlainDays(days) },
+                            trollMessages   = viewModel.trollMessages,
+                            regionalBoard   = regionalBoard,
+                            globalBoard     = globalBoard,
+                            getBotProfile   = { id -> viewModel.getBotProfile(id) },
+                            // v4.2.0 — custom theme
+                            themeSettings   = state.themeSettings,
+                            onSetThemeColor = { hex -> viewModel.setThemeColor(hex) },
+                            onSetThemePhoto = { uri -> viewModel.setThemePhoto(uri) },
+                            onResetTheme    = { viewModel.resetTheme() },
+                            // v4.3.0 — achievements
+                            seenAchievementIds    = seenAchievementIds,
+                            onMarkAchievementSeen = { id -> viewModel.markAchievementSeen(id) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── Root App ───────────────────────────────────────────────────────────────────
+@Composable
+fun WarriorApp(
+    state: com.tanay.warrior.data.WarriorState,
+    vm: WarriorViewModel,
+    showConfetti: Boolean,
+    onLogVictory: () -> Unit,
+    onLogRelapse: (String) -> Boolean,
+    onClearConfetti: () -> Unit,
+    onExport: () -> String,
+    onImport: (String) -> Boolean,
+    onImportPlain: (Map<String, com.tanay.warrior.data.DayData>) -> Boolean,
+    trollMessages: List<String>,
+    regionalBoard: List<com.tanay.warrior.data.BotSimulator.LeaderboardEntry>,
+    globalBoard: List<com.tanay.warrior.data.BotSimulator.LeaderboardEntry>,
+    getBotProfile: (Int) -> com.tanay.warrior.data.BotProfile?,
+    // v4.2.0 — custom theme
+    themeSettings: com.tanay.warrior.data.ThemeSettings,
+    onSetThemeColor: (String) -> Unit,
+    onSetThemePhoto: (Uri) -> Unit,
+    onResetTheme: () -> Unit,
+    // v4.3.0 — achievements. regionalBoard/globalBoard (already params above)
+    // are enough to derive the user's live rank for the two ARENA
+    // achievements — no separate rank-fetching plumbing was needed.
+    seenAchievementIds: Set<String>,
+    onMarkAchievementSeen: (String) -> Unit
+) {
+    var currentView      by remember { mutableStateOf(ViewState.DASHBOARD) }
+    var showRelapseModal by remember { mutableStateOf(false) }
+    var showPanicModal   by remember { mutableStateOf(false) }
+    var trollMessage     by remember { mutableStateOf("") }
+    var fingerX          by remember { mutableStateOf(-1f) }
+    // v4.3.0 — Achievements is a full-screen overlay on top of the normal
+    // dock/Scaffold, not another ViewState — see the render block just
+    // above the closing brace of this function for why.
+    var showAchievements by remember { mutableStateOf(false) }
+    // v4.0.2 — Toast state (triggered only on Clean / Fail button press)
+    val toastState       = rememberToastState()
+
+    BackHandler {
+        when {
+            showRelapseModal -> showRelapseModal = false
+            showPanicModal   -> showPanicModal   = false
+            showAchievements -> showAchievements = false
+            currentView != ViewState.DASHBOARD -> currentView = ViewState.DASHBOARD
+        }
+    }
+
+    Scaffold(
+        // v4.2.0 — transparent when a photo background is active so the
+        // Image drawn just below shows through; otherwise the usual solid black.
+        containerColor = if (themeSettings.mode == com.tanay.warrior.data.ThemeMode.PHOTO) Color.Transparent else BgBlack,
+        bottomBar = {
+            WarriorMagnifiedDock(
+                items        = navItems,
+                current      = currentView,
+                fingerX      = fingerX,
+                onFingerMove = { fingerX = it },
+                onSelect     = { currentView = it }
+            )
+        }
+    ) { innerPadding ->
+        Box(modifier = Modifier.fillMaxSize()) {
+            // v4.2.0 — gallery-photo theme background. Sits behind the whole
+            // Scaffold content, with a dark scrim on top so existing white/gray
+            // text (unchanged in every screen) stays readable over any photo.
+            // Decoded with plain BitmapFactory (no new image-loading library
+            // dependency needed) since this is always a local file we copied
+            // into app-private storage ourselves in setThemePhoto().
+            if (themeSettings.mode == com.tanay.warrior.data.ThemeMode.PHOTO && themeSettings.photoPath.isNotBlank()) {
+                val bgBitmap = remember(themeSettings.photoPath) {
+                    runCatching {
+                        android.graphics.BitmapFactory.decodeFile(themeSettings.photoPath)
+                            ?.asImageBitmap()
+                    }.getOrNull()
+                }
+                if (bgBitmap != null) {
+                    androidx.compose.foundation.Image(
+                        bitmap             = bgBitmap,
+                        contentDescription = null,
+                        modifier           = Modifier.fillMaxSize(),
+                        contentScale       = androidx.compose.ui.layout.ContentScale.Crop
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.62f))
+                    )
+                } else {
+                    Box(modifier = Modifier.fillMaxSize().background(BgBlack))
+                }
+            } else {
+                Box(modifier = Modifier.fillMaxSize().background(BgBlack))
+            }
+
+            Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("COMMANDER MODE", fontSize = 10.sp, color = TextTertiary,
+                                fontWeight = FontWeight.ExtraBold, letterSpacing = 3.sp)
+                            Text("WARRIOR 2026", fontSize = 22.sp,
+                                fontWeight = FontWeight.Black, color = WarriorRed)
+                        }
+                    }
+
+                    AnimatedContent(
+                        targetState    = currentView,
+                        transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(200)) },
+                        label          = "screen",
+                        modifier       = Modifier.weight(1f)
+                    ) { view ->
+                        when (view) {
+                            ViewState.DASHBOARD -> DashboardScreen(
+                                state          = state,
+                                onPanicClick   = { showPanicModal = true },
+                                onVictoryClick = {
+                                    onLogVictory()
+                                    // v4.0.2 — Toast: triggered on Clean press
+                                    toastState.show(ToastData(
+                                        title       = "Day Logged Clean ✅",
+                                        description = "Stay strong, warrior. Keep the streak alive.",
+                                        variant     = ToastVariant.SUCCESS
+                                    ))
+                                },
+                                onRelapseClick = {
+                                    trollMessage = trollMessages.random()
+                                    showRelapseModal = true
+                                }
+                            )
+                            ViewState.LEADERBOARD -> LeaderboardScreen(
+                                regionalBoard = regionalBoard,
+                                globalBoard   = globalBoard,
+                                userRegion    = state.userProfile.region,
+                                getBotProfile = getBotProfile
+                            )
+                            ViewState.ANALYSIS -> AnalysisScreen(
+                                state = state,
+                                onOpenAchievements = { showAchievements = true }
+                            )
+                            ViewState.ARCHIVE  -> ArchiveScreen(state = state)
+                            ViewState.HABITS   -> HabitsScreen(state = state, vm = vm)
+                            ViewState.ABOUT    -> AboutScreen(
+                                onExport      = onExport,
+                                onImport      = onImport,
+                                onImportPlain = onImportPlain,
+                                // v4.2.0 — custom theme
+                                themeSettings   = themeSettings,
+                                onSetThemeColor = onSetThemeColor,
+                                onSetThemePhoto = onSetThemePhoto,
+                                onResetTheme    = onResetTheme
+                            )
+                        }
+                    }
+                }
+
+                if (showConfetti) {
+                    LaunchedEffect(Unit) { kotlinx.coroutines.delay(2000); onClearConfetti() }
+                    ConfettiOverlay(onDismiss = onClearConfetti)
+                }
+                if (showRelapseModal) {
+                    RelapseModal(
+                        trollMessage = trollMessage,
+                        onDismiss    = { showRelapseModal = false },
+                        onConfess    = { url ->
+                            val ok = onLogRelapse(url)
+                            if (ok) {
+                                showRelapseModal = false
+                                // v4.0.2 — Toast: triggered on Fail confirmation
+                                toastState.show(ToastData(
+                                    title       = "Relapse Logged ❌",
+                                    description = "Count recorded. Tomorrow is a new war.",
+                                    variant     = ToastVariant.DESTRUCTIVE
+                                ))
+                            }
+                            ok
+                        }
+                    )
+                }
+                if (showPanicModal) PanicModal(onDismiss = { showPanicModal = false })
+
+                // v4.0.2 — Toast overlay (renders on top of all content)
+                ToastViewport(state = toastState, position = ToastPosition.TOP_RIGHT)
+            }
+        } // closes the v4.2.0 photo-background wrapper Box
+    }
+
+    // v4.3.0 — Achievements renders as a full-screen overlay ABOVE the whole
+    // Scaffold (not inside its content area), so the bottom dock is hidden
+    // while it's open — matching Play Games' immersive achievements page.
+    // Rank comes straight from the already-passed-in regionalBoard/
+    // globalBoard rather than needing new plumbing.
+    if (showAchievements) {
+        AchievementsScreen(
+            state          = state,
+            regionalRank   = regionalBoard.find { it.isUser }?.rank,
+            globalRank     = globalBoard.find { it.isUser }?.rank,
+            seenIds        = seenAchievementIds,
+            onMarkSeen     = onMarkAchievementSeen,
+            onBack         = { showAchievements = false }
+        )
+    }
+}
+
+// ── Magnified Dock ─────────────────────────────────────────────────────────────
+@Composable
+fun WarriorMagnifiedDock(
+    items: List<NavItem>,
+    current: ViewState,
+    fingerX: Float,
+    onFingerMove: (Float) -> Unit,
+    onSelect: (ViewState) -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(bottom = 12.dp, start = 20.dp, end = 20.dp),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Row(
+            modifier = Modifier
+                .height(72.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(Color(0xFF0D0D0D).copy(alpha = 0.98f))
+                .border(1.dp, BorderColor, RoundedCornerShape(24.dp))
+                .padding(horizontal = 8.dp)
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDragEnd    = { onFingerMove(-1f) },
+                        onDragCancel = { onFingerMove(-1f) },
+                        onDrag       = { change, _ -> onFingerMove(change.position.x) }
+                    )
+                },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            items.forEach { item ->
+                MagnifiedDockItem(
+                    item       = item,
+                    isSelected = current == item.view,
+                    fingerX    = fingerX,
+                    onClick    = { onSelect(item.view) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun MagnifiedDockItem(
+    item: NavItem,
+    isSelected: Boolean,
+    fingerX: Float,
+    onClick: () -> Unit
+) {
+    var itemCenterX by remember { mutableStateOf(0f) }
+    val distance = if (fingerX == -1f) Float.MAX_VALUE else abs(fingerX - itemCenterX)
+
+    val targetScale = if (distance < 250f) {
+        1f + (0.4f * (1f - (distance / 250f)))
+    } else 1f
+
+    val scale by animateFloatAsState(
+        targetValue   = targetScale,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow),
+        label         = "scale"
+    )
+
+    Column(
+        modifier = Modifier
+            .onGloballyPositioned { coords ->
+                itemCenterX = coords.positionInParent().x + (coords.size.width / 2)
+            }
+            .scale(scale)
+            .width(48.dp)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication        = null,
+                onClick           = onClick
+            ),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(
+                    if (isSelected) {
+                        if (item.view == ViewState.LEADERBOARD) Color(0xFF001A2E)
+                        else Color(0xFF1A0000)
+                    } else Color.Transparent
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector        = item.icon,
+                contentDescription = item.label,
+                tint = when {
+                    !isSelected -> TextTertiary
+                    item.view == ViewState.LEADERBOARD -> Gold
+                    else -> WarriorRed
+                },
+                modifier = Modifier.size(22.dp)
+            )
+        }
+        if (scale > 1.1f || isSelected) {
+            Text(
+                text       = item.label,
+                fontSize   = 8.sp,
+                color      = when {
+                    !isSelected -> TextTertiary
+                    item.view == ViewState.LEADERBOARD -> Gold
+                    else -> WarriorRed
+                },
+                fontWeight = FontWeight.Bold,
+                maxLines   = 1
+            )
+        }
+    }
+}
