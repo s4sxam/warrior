@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Auto Backup + device-transfer rules for Android 12+ (android:dataExtractionRules).
+  Same policy as backup_rules.xml: exclude ONLY the NNN private store from both cloud backup and
+  device-to-device transfer; everything else keeps its existing behaviour.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="datastore/nnn_private_v1.preferences_pb" />
+        <exclude domain="file" path="datastore/nnn_private_v1.preferences_pb.tmp" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="datastore/nnn_private_v1.preferences_pb" />
+        <exclude domain="file" path="datastore/nnn_private_v1.preferences_pb.tmp" />
+    </device-transfer>
+</data-extraction-rules>
